@@ -1,0 +1,66 @@
+services:
+  backend:
+    build: ./backend
+    container_name: pdf_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/pdfworkspace
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - pdf_net
+
+  frontend:
+    build: ./frontend
+    container_name: pdf_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - pdf_net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: pdf_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pdfworkspace
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdf_net
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: pdf_chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - pdf_net
+
+volumes:
+  postgres_data:
+  chroma_data:
+
+networks:
+  pdf_net:
+    driver: bridge
