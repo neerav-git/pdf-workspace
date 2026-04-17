@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../store'
 import { findRelatedEntries } from '../utils/indexMatch'
 import { getRelatedChunks, synthesizeEntry } from '../api/pdfs'
+import { fetchReviewStats, fetchCardReviewData } from '../api/review'
 import './HighlightIndex.css'
 
 // ── Action type detection ─────────────────────────────────────────────────────
@@ -172,7 +173,18 @@ export default function HighlightIndex() {
     deleteIndexEntry, deleteIndexQA,
     setEntryNote,
     setSynthesis,
+    openReview,
   } = useAppStore()
+
+  // ── Review stats (due count for review bar badge) ───────────────────────────
+  const [dueCount, setDueCount] = useState(null)
+  useEffect(() => {
+    if (!selectedPdf?.id) return
+    fetchReviewStats()
+      .then((s) => setDueCount(s.due_now))
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPdf?.id, highlightIndex.length])
 
   const [view, setView]                     = useState('page') // 'page'|'section'|'concept'|'starred'
   const [activeConcept, setActiveConcept]   = useState(null)
@@ -390,10 +402,25 @@ export default function HighlightIndex() {
   function QACard({ qa, entryId, isFocused }) {
     const { label, type, isAction } = getQuestionDisplay(qa.question)
     const isExpanded = !!expandedQAs[qa.id]
+    const [reviewLoading, setReviewLoading] = useState(false)
 
     // Manual question display: truncate in header; show full text above answer when expanded
     const shortQuestion = !isAction && label.length > 82 ? label.slice(0, 80) + '…' : label
     const questionTruncated = !isAction && label.length > 82
+
+    async function handleReviewThis(e) {
+      e.stopPropagation()
+      if (reviewLoading) return
+      setReviewLoading(true)
+      try {
+        const card = await fetchCardReviewData(qa.id)
+        openReview({ cards: [card] })
+      } catch (err) {
+        console.error('Failed to load card for review:', err)
+      } finally {
+        setReviewLoading(false)
+      }
+    }
 
     return (
       <li className={`idx-qa ${qa.starred ? 'starred' : ''} ${isFocused ? 'focused' : ''}`}>
@@ -432,6 +459,13 @@ export default function HighlightIndex() {
           <span className="idx-qa-time" title={qa.createdAt ? new Date(qa.createdAt).toLocaleString() : ''}>
             {relativeTime(qa.createdAt)}
           </span>
+
+          <button
+            className="idx-review-this"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleReviewThis}
+            title="Review this card now"
+          >{reviewLoading ? '…' : '▶'}</button>
 
           <button
             className="idx-del"
@@ -626,6 +660,31 @@ export default function HighlightIndex() {
           <span className="idx-stats-star">★ {totalStarred} starred</span>
         </>}
       </div>
+
+      {/* Review button */}
+      {totalQA > 0 && (
+        <div className="idx-review-bar">
+          <button
+            className="idx-review-btn"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => openReview(selectedPdf ? { pdfId: selectedPdf.id } : null)}
+            title="Start spaced-repetition review for this document"
+          >
+            ▶ Review
+            {dueCount != null && dueCount > 0 && (
+              <span className="idx-review-due-badge">{dueCount}</span>
+            )}
+          </button>
+          <button
+            className="idx-review-btn idx-review-btn--secondary"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => openReview(null)}
+            title="Review all due cards across all documents"
+          >
+            All due
+          </button>
+        </div>
+      )}
 
       {/* View tabs */}
       <div className="idx-view-tabs">

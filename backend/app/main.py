@@ -6,14 +6,23 @@ from sqlalchemy import text
 
 from app.db.session import engine, Base, SessionLocal
 # Import models so SQLAlchemy registers them before create_all
-import app.models.pdf  # noqa: F401
-from app.routers import pdfs, chat, voice
+import app.models.pdf       # noqa: F401
+import app.models.highlight  # noqa: F401
+import app.models.review     # noqa: F401
+from app.routers import pdfs, chat, voice, highlights, review, research
 from app.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Seed default rubric + prompt versions for grading (Research B4, C4)
+    from app.services.grading_service import ensure_default_rubric_version
+    db = SessionLocal()
+    try:
+        ensure_default_rubric_version(db)
+    finally:
+        db.close()
     yield
 
 
@@ -30,6 +39,9 @@ app.add_middleware(
 app.include_router(pdfs.router)
 app.include_router(chat.router)
 app.include_router(voice.router)
+app.include_router(highlights.router)
+app.include_router(review.router)
+app.include_router(research.router)
 
 
 @app.get("/health")

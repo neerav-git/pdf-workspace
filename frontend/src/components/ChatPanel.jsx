@@ -119,6 +119,7 @@ export default function ChatPanel() {
       highlightText: logPrompt.selectionText,
       question: logPrompt.question,
       answer: logPrompt.answer,
+      sourceChunkIds: resolved?.chunk_id ? [resolved.chunk_id] : [],
     })
     setIsSaving(false)
     setLogPrompt(null)
