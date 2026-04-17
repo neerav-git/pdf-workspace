@@ -1,0 +1,255 @@
+{
+  "_comment": "Test cases for the pdf-workspace LLM eval pipeline. Run with: python -m tests.eval.eval_chat --pdf-id <id>",
+
+  "single_turn": [
+    {
+      "id": "A_overview",
+      "name": "Category A — Orientation: broad document overview",
+      "category": "A",
+      "message": "What is this book about?",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "has_core_list": true,
+        "core_max_items": 5,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": [
+        "starts_with_this_document",
+        "starts_with_according_to",
+        "starts_with_the_author"
+      ],
+      "notes": "Should produce 3-5 Big Ideas, not a chapter list. Hook must be a claim, not a description."
+    },
+    {
+      "id": "A_summarise",
+      "name": "Category A — Orientation: explicit summarise",
+      "category": "A",
+      "message": "Summarise the main ideas of this document",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "has_core_list": true,
+        "core_max_items": 5,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": ["starts_with_this_document"],
+      "notes": "Same as A_overview — confirm same template fires for 'summarise' phrasing."
+    },
+    {
+      "id": "B_mechanism",
+      "name": "Category B — Mechanism: explain how something works",
+      "category": "B",
+      "message": "How does the main concept in this document work? Walk me through the mechanism.",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "has_causal_language": true,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": ["bullet_list_without_causality"],
+      "notes": "Layer 3 must read as a causal chain (because of that / which leads to), not a component list."
+    },
+    {
+      "id": "C_procedural",
+      "name": "Category C — Procedural: how do I steps",
+      "category": "C",
+      "message": "What are the steps I should follow to apply what this document teaches?",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "has_numbered_steps": true,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": [],
+      "notes": "Layer 3 must use numbered steps. Should name decision points or failure modes."
+    },
+    {
+      "id": "D_comparative",
+      "name": "Category D — Comparative: difference between concepts",
+      "category": "D",
+      "message": "What is the difference between the key ideas discussed in this document?",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "has_axis_of_comparison": true,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": ["two_separate_descriptions"],
+      "notes": "Layer 3 must name the axis first. Two parallel descriptions without a named axis = fail."
+    },
+    {
+      "id": "E_evaluative",
+      "name": "Category E — Evaluative: critique or assess",
+      "category": "E",
+      "message": "What are the weaknesses or limitations of the arguments made in this document?",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "states_criterion_before_judgment": true,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": ["judgment_without_criterion"],
+      "notes": "Must state the evaluative standard (what counts as a weakness) before the judgment."
+    },
+    {
+      "id": "F_application",
+      "name": "Category F — Application: give me an example",
+      "category": "F",
+      "message": "Give me a concrete real-world example of how the ideas in this document apply in practice.",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "has_specific_example": true,
+        "example_names_principle": true,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": ["generic_example"],
+      "notes": "Example must be specific and chosen to reveal the principle, not just illustrate it."
+    },
+    {
+      "id": "highlight_full",
+      "name": "Highlight — full sentence selection",
+      "category": "B",
+      "message": "Explain this passage",
+      "selection_text": null,
+      "selection_page": 1,
+      "section_title": "Introduction",
+      "_selection_text_note": "Will be filled at runtime from first RAG chunk of the PDF",
+      "structure_checks": {
+        "has_hook": true,
+        "has_frame": true,
+        "frame_mentions_section": true,
+        "has_thread": true,
+        "has_deep_dive_heading": true
+      },
+      "anti_patterns": [],
+      "notes": "Frame (Layer 2) must mention the section title. Full highlight = full depth response."
+    },
+    {
+      "id": "deep_dive_heading",
+      "name": "Structure check — Deep Dive heading always present",
+      "category": "A",
+      "message": "Give me a quick overview of this document",
+      "selection_text": null,
+      "selection_page": null,
+      "section_title": null,
+      "structure_checks": {
+        "has_deep_dive_heading": true,
+        "deep_dive_heading_exact": "→ Questions worth sitting with"
+      },
+      "anti_patterns": [],
+      "notes": "The heading must appear verbatim. Even for a quick/vague question."
+    }
+  ],
+
+  "multi_turn": [
+    {
+      "id": "MT_conciseness",
+      "name": "Multi-turn — conciseness follow-up",
+      "turns": [
+        {
+          "message": "Explain the main argument of this document in depth",
+          "selection_text": null,
+          "section_title": null,
+          "assertions": {
+            "min_words": 80,
+            "has_deep_dive_heading": true
+          }
+        },
+        {
+          "message": "That's too detailed. Give me the single most important takeaway in 2–3 sentences.",
+          "selection_text": null,
+          "section_title": null,
+          "assertions": {
+            "max_words": 200,
+            "is_shorter_than_turn": 0,
+            "note": "Response must be meaningfully shorter (< 75%) than turn 0. Absolute cap raised to 200 because the template itself adds some fixed overhead."
+          }
+        }
+      ],
+      "notes": "Tests that the model adapts depth within a conversation, not just restates."
+    },
+    {
+      "id": "MT_clarify",
+      "name": "Multi-turn — follow-up clarification",
+      "turns": [
+        {
+          "message": "What is the core framework presented in this document?",
+          "selection_text": null,
+          "section_title": null,
+          "assertions": {
+            "has_hook": true,
+            "has_deep_dive_heading": true
+          }
+        },
+        {
+          "message": "Can you go deeper on the first point you mentioned?",
+          "selection_text": null,
+          "section_title": null,
+          "assertions": {
+            "references_prior_turn": true,
+            "has_deep_dive_heading": true,
+            "note": "Response must build on, not repeat, the first turn."
+          }
+        }
+      ],
+      "notes": "Tests coherent multi-turn — second response must reference what was said in turn 1."
+    },
+    {
+      "id": "MT_partial_to_full",
+      "name": "Multi-turn — escalate from highlight to full explain",
+      "turns": [
+        {
+          "message": "What does this mean?",
+          "selection_text": null,
+          "section_title": "Introduction",
+          "_note": "selection_text filled at runtime",
+          "assertions": {
+            "frame_mentions_section": true,
+            "has_deep_dive_heading": true
+          }
+        },
+        {
+          "message": "Now explain the broader context this passage sits in",
+          "selection_text": null,
+          "section_title": null,
+          "assertions": {
+            "has_hook": true,
+            "has_deep_dive_heading": true,
+            "_note": "is_longer_than_turn removed — depends on which passage was selected and is flaky"
+          }
+        }
+      ],
+      "notes": "Second turn drops selection context — should produce a broader, longer response."
+    }
+  ]
+}

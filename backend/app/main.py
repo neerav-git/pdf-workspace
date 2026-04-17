@@ -1,16 +1,18 @@
 from contextlib import asynccontextmanager
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
-from app.db.session import engine, Base
+from app.db.session import engine, Base, SessionLocal
 # Import models so SQLAlchemy registers them before create_all
 import app.models.pdf  # noqa: F401
-from app.routers import pdfs, chat
+from app.routers import pdfs, chat, voice
+from app.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all tables on startup
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -27,8 +29,60 @@ app.add_middleware(
 
 app.include_router(pdfs.router)
 app.include_router(chat.router)
+app.include_router(voice.router)
 
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/health/detailed")
+async def health_detailed():
+    """
+    Deep health check — hit this URL and paste the JSON to Claude when debugging.
+    Returns connectivity status for every service the backend depends on.
+    """
+    results = {}
+
+    # ── Postgres ──────────────────────────────────────────────
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        results["postgres"] = {"ok": True}
+    except Exception as e:
+        results["postgres"] = {"ok": False, "error": str(e)}
+
+    # ── ChromaDB ──────────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(
+                f"http://{settings.CHROMA_HOST}:{settings.CHROMA_PORT}/api/v1/heartbeat"
+            )
+        results["chromadb"] = {"ok": r.status_code == 200, "status_code": r.status_code}
+    except Exception as e:
+        results["chromadb"] = {"ok": False, "error": str(e)}
+
+    # ── S3 ────────────────────────────────────────────────────
+    try:
+        import boto3
+        from app.core.config import settings as s
+        boto3.client(
+            "s3",
+            aws_access_key_id=s.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=s.AWS_SECRET_ACCESS_KEY,
+        ).head_bucket(Bucket=s.S3_BUCKET_NAME)
+        results["s3"] = {"ok": True, "bucket": s.S3_BUCKET_NAME}
+    except Exception as e:
+        results["s3"] = {"ok": False, "error": str(e)}
+
+    # ── API keys present (not validated, just existence check) ─
+    results["api_keys"] = {
+        "anthropic": bool(settings.ANTHROPIC_API_KEY),
+        "openai":    bool(settings.OPENAI_API_KEY),
+        "tavily":    bool(settings.TAVILY_API_KEY),
+    }
+
+    overall = all(v.get("ok", False) for k, v in results.items() if k != "api_keys")
+    return {"status": "ok" if overall else "degraded", "services": results}

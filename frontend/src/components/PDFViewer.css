@@ -28,6 +28,8 @@
   font-size: 14px;
 }
 
+/* ── Toolbar ── */
+
 .viewer-toolbar {
   display: flex;
   align-items: center;
@@ -71,12 +73,45 @@
 }
 .viewer-btn:hover:not(:disabled) { background: #333; }
 .viewer-btn:disabled { opacity: 0.35; cursor: default; }
+.viewer-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
 
-.viewer-page-info,
-.viewer-scale {
+.viewer-toc-btn { font-size: 14px; }
+
+.viewer-page-info {
   font-size: 12px;
   color: #999;
   min-width: 52px;
+  text-align: center;
+}
+
+.viewer-page-info.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  transition: background 0.1s, color 0.1s;
+}
+.viewer-page-info.clickable:hover { background: #2e2e2e; color: #e0e0e0; }
+
+.viewer-page-input {
+  width: 60px;
+  background: #1e1e1e;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  text-align: center;
+  padding: 2px 4px;
+  outline: none;
+  /* hide number input spinners */
+  -moz-appearance: textfield;
+}
+.viewer-page-input::-webkit-outer-spin-button,
+.viewer-page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.viewer-scale {
+  font-size: 12px;
+  color: #999;
+  min-width: 36px;
   text-align: center;
 }
 
@@ -87,12 +122,170 @@
   margin: 0 4px;
 }
 
+/* ── Body (ToC + scroll area side-by-side) ── */
+
+.viewer-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── ToC Panel ── */
+
+.viewer-toc {
+  width: 240px;
+  flex-shrink: 0;
+  background: #181818;
+  border-right: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.viewer-toc-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+
+.viewer-toc-generated {
+  color: #6b7280;
+  font-size: 10px;
+  margin-left: 2px;
+  cursor: default;
+}
+
+.viewer-toc-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.1s;
+}
+.viewer-toc-close:hover { color: #ccc; }
+
+.viewer-toc-search-wrap {
+  position: relative;
+  padding: 6px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #222;
+}
+
+.viewer-toc-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: #111;
+  border: 1px solid #2e2e2e;
+  border-radius: 5px;
+  color: #ccc;
+  font-size: 12px;
+  padding: 5px 24px 5px 8px;
+  outline: none;
+  transition: border-color 0.1s;
+}
+.viewer-toc-search:focus { border-color: #2563eb; }
+.viewer-toc-search::placeholder { color: #444; }
+
+.viewer-toc-search-clear {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 3px;
+  line-height: 1;
+}
+.viewer-toc-search-clear:hover { color: #ccc; }
+
+.viewer-toc-no-results {
+  font-size: 12px;
+  color: #444;
+  padding: 16px 12px;
+  font-style: italic;
+}
+
+.viewer-toc-list {
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.viewer-toc-item { padding: 0; }
+.viewer-toc-item.level-1 .viewer-toc-link { color: #9ca3af; }
+.viewer-toc-item.level-1 .viewer-toc-link:hover { color: #e0e0e0; }
+.viewer-toc-item.level-2 .viewer-toc-link { padding-left: 20px; color: #6b7280; font-size: 11px; }
+.viewer-toc-item.level-2 .viewer-toc-link:hover { color: #c0c0c0; }
+.viewer-toc-item.level-3 .viewer-toc-link { padding-left: 36px; color: #4b5563; font-size: 11px; }
+
+.viewer-toc-link {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 5px 12px 5px 12px;
+  cursor: pointer;
+  text-align: left;
+  color: #888;
+  font-size: 12px;
+  transition: background 0.1s, color 0.1s;
+  border-radius: 0;
+}
+.viewer-toc-link:hover { background: #222; color: #e0e0e0; }
+
+.viewer-toc-title {
+  flex: 1;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewer-toc-page {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #444;
+  min-width: 24px;
+  text-align: right;
+}
+
+/* ── PDF scroll area ── */
+
 .viewer-canvas-wrap {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: auto;
   display: flex;
-  justify-content: center;
-  padding: 20px;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 20px 60px;
+  gap: 16px;
+}
+
+.viewer-page-wrapper {
+  flex-shrink: 0;
+}
+
+.viewer-page-placeholder {
+  background: #1e1e1e;
+  border-radius: 2px;
+  width: 612px; /* typical page width at scale 1.0 */
 }
 
 .viewer-loading {
@@ -114,4 +307,107 @@
 
 .react-pdf__Page__canvas {
   border-radius: 2px;
+}
+
+/* ── ToC banner (shown above page 1 when no native outline) ── */
+
+.viewer-toc-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #1a2235;
+  border: 1px solid #2d4a7a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  width: 100%;
+  max-width: 700px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.viewer-toc-banner-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+
+.viewer-toc-banner-text {
+  flex: 1;
+  font-size: 13px;
+  color: #a0b4cc;
+  line-height: 1.5;
+}
+.viewer-toc-banner-text strong { color: #c0d4e8; }
+
+.viewer-toc-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.viewer-toc-banner-yes {
+  background: #2563eb;
+  border: none;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+.viewer-toc-banner-yes:hover { background: #1d4ed8; }
+
+.viewer-toc-banner-dismiss {
+  background: none;
+  border: 1px solid #334;
+  border-radius: 5px;
+  color: #666;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+.viewer-toc-banner-dismiss:hover { color: #aaa; border-color: #555; }
+
+/* ── Persistent text highlight (CSS Custom Highlight API) ── */
+::highlight(pdf-selection) {
+  background-color: rgba(37, 99, 235, 0.35);
+  color: inherit;
+}
+
+/* ── Highlight Lens (CSS Custom Highlight API) ── */
+/* Default: subtle amber — indexed but no curation state */
+::highlight(pdf-lens) {
+  background-color: rgba(251, 191, 36, 0.22);
+  color: inherit;
+}
+/* Flagged: needs attention — warm red */
+::highlight(pdf-lens-flagged) {
+  background-color: rgba(239, 68, 68, 0.22);
+  color: inherit;
+}
+/* Anchored: foundational — cool blue */
+::highlight(pdf-lens-anchored) {
+  background-color: rgba(96, 165, 250, 0.25);
+  color: inherit;
+}
+/* Reviewed: done — soft green */
+::highlight(pdf-lens-reviewed) {
+  background-color: rgba(52, 211, 153, 0.2);
+  color: inherit;
+}
+
+/* Lens toggle button */
+.viewer-lens-btn {
+  font-size: 14px;
+  line-height: 1;
+}
+.viewer-lens-btn.active {
+  color: #fbbf24;
+}
+
+/* Flash highlight — navigating to a specific passage from the index */
+::highlight(pdf-flash) {
+  background-color: rgba(251, 191, 36, 0.6);
+  color: inherit;
 }

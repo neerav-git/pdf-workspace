@@ -1,0 +1,1076 @@
+.highlight-index {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+/* ── Empty states ─────────────────────────────────────────────────────────── */
+
+.idx-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #444;
+  font-size: 13px;
+  text-align: center;
+  padding: 32px 24px;
+}
+.idx-empty-inline { flex: 0; padding: 24px 20px; }
+.idx-empty-icon   { font-size: 36px; opacity: 0.4; }
+.idx-empty-hint   { font-size: 11px; color: #333; line-height: 1.7; max-width: 260px; }
+
+/* ── Stats bar ────────────────────────────────────────────────────────────── */
+
+.idx-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  color: #4a4a4a;
+  border-bottom: 1px solid #1e1e1e;
+  flex-shrink: 0;
+}
+.idx-stats-sep  { color: #2e2e2e; }
+.idx-stats-star { color: #fbbf24; }
+
+/* ── View tabs ────────────────────────────────────────────────────────────── */
+
+.idx-view-tabs {
+  display: flex;
+  border-bottom: 1px solid #1e1e1e;
+  flex-shrink: 0;
+}
+.idx-view-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #4a4a4a;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: 7px 4px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.idx-view-tab:hover { color: #888; }
+.idx-view-tab.active { color: #e0e0e0; border-bottom-color: #2563eb; }
+
+.idx-tab-count {
+  background: #fbbf2422;
+  color: #fbbf24;
+  font-size: 10px;
+  border-radius: 8px;
+  padding: 1px 5px;
+}
+
+/* ── Scroll body ──────────────────────────────────────────────────────────── */
+
+.idx-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+/* ── Page section ─────────────────────────────────────────────────────────── */
+
+.idx-page-section {
+  margin-bottom: 4px;
+}
+
+.idx-page-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 5px;
+  position: sticky;
+  top: 0;
+  background: #111;
+  z-index: 2;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.idx-page-num {
+  background: #172033;
+  color: #60a5fa;
+  border: 1px solid #1e3a5f;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .1s, border-color .1s;
+  flex-shrink: 0;
+}
+.idx-page-num:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
+.idx-page-num.small { font-size: 10px; padding: 2px 6px; }
+
+.idx-page-count { font-size: 10px; color: #383838; }
+
+/* ── Section heading (By Section view — legacy flat, kept for compat) ─────── */
+
+.idx-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px 5px;
+  position: sticky;
+  top: 0;
+  background: #111;
+  z-index: 2;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.idx-section-icon {
+  font-size: 11px;
+  color: #2563eb;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.idx-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8ab4f8;
+  letter-spacing: 0.02em;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Hierarchical By Section view: H1 → H2 → entries ─────────────────────── */
+
+.idx-h1-section {
+  margin-bottom: 8px;
+}
+
+/* H1 sticky heading — top-level chapter/section */
+.idx-h1-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 7px;
+  position: sticky;
+  top: 0;
+  background: #0e0e0e;
+  z-index: 3;
+  border-bottom: 1px solid #222;
+  border-top: 1px solid #1a1a1a;
+}
+.idx-h1-section:first-child .idx-h1-heading { border-top: none; }
+
+.idx-h1-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #c0cfe8;
+  letter-spacing: 0.03em;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* H2 block — subsection within an H1 */
+.idx-h2-block {
+  margin-bottom: 2px;
+}
+
+.idx-h2-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 4px 20px;
+  position: sticky;
+  top: 34px;   /* below H1 heading */
+  background: #111;
+  z-index: 2;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.idx-h2-icon {
+  font-size: 11px;
+  color: #2563eb;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.idx-h2-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b8fc4;
+  letter-spacing: 0.02em;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.idx-entry-section-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+/* ── Highlight entry card ─────────────────────────────────────────────────── */
+
+.idx-entry {
+  margin: 5px 10px 3px;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color .15s;
+}
+.idx-entry.focused { border-color: #2563eb55; box-shadow: 0 0 0 1px #2563eb22; }
+.idx-entry.starred { border-color: #fbbf2433; }
+
+.idx-entry-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 9px;
+  cursor: pointer;
+  background: #181818;
+  transition: background .1s;
+}
+.idx-entry-header:hover { background: #1e1e1e; }
+
+.idx-star {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: #2e2e2e;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 1px;
+  transition: color .1s;
+}
+.idx-star:hover { color: #fbbf24; }
+.idx-star.on    { color: #fbbf24; }
+
+.idx-entry-text-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Pull-quote style for the highlighted passage */
+/* idx-entry-text is now a <button> — reset button defaults, keep pull-quote look */
+.idx-entry-text {
+  font-size: 11.5px;
+  color: #7a7a7a;
+  font-style: italic;
+  line-height: 1.5;
+  word-break: break-word;
+  border-left: 2px solid #2e2e2e;
+  padding-left: 7px;
+  /* button reset */
+  background: none;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  transition: color 0.15s, border-left-color 0.15s;
+}
+.idx-entry-text:hover {
+  color: #aaa;
+  border-left-color: #4a90d9;
+}
+.idx-entry.starred .idx-entry-text  { border-left-color: #fbbf2444; }
+.idx-entry.focused .idx-entry-text  { border-left-color: #2563eb55; }
+.idx-entry.starred .idx-entry-text:hover,
+.idx-entry.focused .idx-entry-text:hover { border-left-color: #4a90d9; }
+/* When an entry has multiple passage texts, add a small gap between them */
+.idx-entry-text + .idx-entry-text { margin-top: 5px; }
+
+.idx-entry-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 10px;
+  color: #383838;
+}
+.idx-has-stars { color: #fbbf24; }
+
+/* Mini action badges shown on the entry header */
+.idx-entry-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.idx-mini-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border-radius: 3px;
+  padding: 1px 4px;
+  opacity: 0.65;
+}
+
+.idx-entry-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.idx-chevron { font-size: 10px; color: #383838; }
+
+.idx-del {
+  background: none;
+  border: none;
+  color: #2a2a2a;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 3px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity .1s, color .1s;
+}
+.idx-entry-header:hover .idx-del,
+.idx-qa-row:hover .idx-del { opacity: 1; }
+.idx-del:hover { color: #f87171; }
+
+/* ── Q&A list ─────────────────────────────────────────────────────────────── */
+
+.idx-qa-list {
+  list-style: none;
+  background: #111;
+  border-top: 1px solid #1a1a1a;
+}
+
+.idx-qa-empty {
+  font-size: 11px;
+  color: #2e2e2e;
+  padding: 10px 14px;
+  font-style: italic;
+}
+
+.idx-qa {
+  padding: 8px 10px 9px;
+  border-bottom: 1px solid #161616;
+  transition: background .1s;
+}
+.idx-qa:last-child { border-bottom: none; }
+.idx-qa.starred    { background: #131200; }
+.idx-qa.focused    { background: #0c1929; }
+
+.idx-qa-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 2px 0;
+  transition: background 0.1s;
+}
+.idx-qa-row:hover { background: #161616; }
+
+/* Action label area — fixed width so inline preview aligns consistently */
+.idx-qa-label {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+/* Inline first-sentence preview — takes remaining space, truncates */
+.idx-qa-inline-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: #3e3e3e;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Relative timestamp */
+.idx-qa-time {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #2e2e2e;
+  white-space: nowrap;
+}
+
+/* Manual question text — no wrap in header row */
+.idx-qa-q-text {
+  font-size: 12px;
+  color: #b0b0b0;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+/* Full question text shown above answer when expanded (manual Q&As) */
+.idx-qa-full-question {
+  font-size: 11.5px;
+  color: #7a7a7a;
+  font-style: italic;
+  margin: 0 0 6px;
+  line-height: 1.5;
+  word-break: break-word;
+  border-left: 2px solid #2a2a2a;
+  padding-left: 6px;
+}
+
+/* ── Action type badges ───────────────────────────────────────────────────── */
+
+.idx-action-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.idx-action-explain   { background: #1e3a5f; color: #60a5fa; }
+.idx-action-simplify  { background: #2e1a4a; color: #a78bfa; }
+.idx-action-terms     { background: #0e2e35; color: #22d3ee; }
+.idx-action-quiz      { background: #2e1f00; color: #fbbf24; }
+.idx-action-summarise { background: #0e2318; color: #4ade80; }
+.idx-action-manual    { background: #1e1e1e; color: #888;    }
+
+/* Mini badge colour-matches full badge */
+.idx-mini-badge.idx-action-explain   { background: #1e3a5f; color: #60a5fa; }
+.idx-mini-badge.idx-action-simplify  { background: #2e1a4a; color: #a78bfa; }
+.idx-mini-badge.idx-action-terms     { background: #0e2e35; color: #22d3ee; }
+.idx-mini-badge.idx-action-quiz      { background: #2e1f00; color: #fbbf24; }
+.idx-mini-badge.idx-action-summarise { background: #0e2318; color: #4ade80; }
+
+/* ── Answer area ─────────────────────────────────────────────────────────── */
+
+.idx-qa-answer-wrap {
+  padding-left: 20px;
+  padding-top: 4px;
+}
+
+/* Expanded markdown answer */
+.idx-qa-a-markdown {
+  font-size: 12px;
+  color: #5e5e5e;
+  line-height: 1.65;
+  word-break: break-word;
+  margin-bottom: 4px;
+}
+.idx-qa-a-markdown p  { margin: 0 0 6px; }
+.idx-qa-a-markdown p:last-child { margin-bottom: 0; }
+.idx-qa-a-markdown ul,
+.idx-qa-a-markdown ol { margin: 3px 0 6px 16px; padding: 0; }
+.idx-qa-a-markdown li { margin-bottom: 3px; }
+.idx-qa-a-markdown strong { color: #888; }
+.idx-qa-a-markdown code {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+.idx-qa-a-markdown h1,
+.idx-qa-a-markdown h2,
+.idx-qa-a-markdown h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  margin: 6px 0 3px;
+}
+.idx-qa-a-markdown blockquote {
+  border-left: 2px solid #2e2e2e;
+  margin: 4px 0;
+  padding-left: 8px;
+  color: #4a4a4a;
+}
+
+/* Expand / collapse button */
+.idx-expand-btn {
+  background: none;
+  border: none;
+  color: #383838;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 2px;
+  transition: color .1s;
+}
+.idx-expand-btn:hover { color: #60a5fa; }
+
+/* ── Annotation field ────────────────────────────────────────────────────── */
+
+.idx-note-wrap {
+  padding: 0 10px 7px;
+  background: #0d0d0d;
+}
+
+/* Ghost prompt when no note exists */
+.idx-note-add {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px dashed #1e1e1e;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #282828;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.idx-note-add:hover { border-color: #333; color: #555; }
+
+/* Inline textarea when editing */
+.idx-note-input {
+  width: 100%;
+  background: #111;
+  border: 1px solid #2e2e2e;
+  border-left: 2px solid #4a4030;
+  border-radius: 4px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  color: #aaa;
+  font-family: inherit;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 58px;
+  box-sizing: border-box;
+  outline: none;
+  display: block;
+}
+.idx-note-input:focus { border-color: #3a3a3a; border-left-color: #6a6040; }
+.idx-note-input::placeholder { color: #2e2e2e; }
+
+/* Saved note display — click to re-edit */
+.idx-note-display {
+  width: 100%;
+  text-align: left;
+  background: #0c0c0a;
+  border: 1px solid #1e1e1e;
+  border-left: 2px solid #3a3a2a;
+  border-radius: 4px;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  color: #777;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: border-left-color 0.15s, color 0.15s;
+}
+.idx-note-display:hover { border-left-color: #6a6040; color: #aaa; }
+
+.idx-note-icon {
+  font-style: normal;
+  font-size: 10px;
+  color: #444;
+  margin-right: 5px;
+}
+
+/* Header indicator — shown when entry has a note, entry is collapsed */
+.idx-note-indicator {
+  font-size: 11px;
+  color: #3a3a26;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.idx-entry:hover .idx-note-indicator { color: #6a6040; }
+
+/* ── Synthesis section ───────────────────────────────────────────────────── */
+
+.idx-synthesis-wrap {
+  padding: 0 10px 7px;
+  background: #0d0d0d;
+}
+
+/* Trigger button — shown when synthesis has not been generated yet */
+.idx-synthesis-trigger {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px dashed #1e2a1e;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #253525;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.idx-synthesis-trigger:hover { border-color: #2e5a2e; color: #4a8a4a; }
+
+/* Loading state */
+.idx-synthesis-loading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #2e5a2e;
+  padding: 5px 8px;
+}
+.idx-synthesis-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #1e3a1e;
+  border-top-color: #4ade80;
+  border-radius: 50%;
+  animation: idx-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes idx-spin { to { transform: rotate(360deg); } }
+
+/* Generated synthesis block */
+.idx-synthesis-block {
+  background: #0a0f0a;
+  border: 1px solid #1a2a1a;
+  border-left: 2px solid #2e5a2e;
+  border-radius: 4px;
+  padding: 7px 9px;
+}
+
+.idx-synthesis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.idx-synthesis-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2e5a2e;
+}
+
+.idx-synthesis-regen {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: #2e3a2e;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.idx-synthesis-regen:hover { color: #4ade80; }
+
+.idx-synthesis-text {
+  font-size: 12px;
+  color: #5a8a5a;
+  line-height: 1.6;
+  margin: 0;
+  word-break: break-word;
+}
+
+/* ── Starred view ─────────────────────────────────────────────────────────── */
+
+.idx-starred-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #161616;
+}
+.idx-starred-item:last-child { border-bottom: none; }
+
+.idx-starred-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.idx-starred-highlight {
+  font-size: 10.5px;
+  color: #444;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.idx-starred-qa { padding-left: 2px; }
+
+/* ── Concept tags (inline on entries) ────────────────────────────────────── */
+
+.idx-concept-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 1px;
+}
+
+.idx-concept-tag {
+  background: #0f1f35;
+  border: 1px solid #1e3a5f55;
+  color: #4a90d9;
+  font-size: 9.5px;
+  font-weight: 500;
+  border-radius: 10px;
+  padding: 1px 7px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
+}
+.idx-concept-tag:hover {
+  background: #172c47;
+  border-color: #2563eb88;
+  color: #7ab8f5;
+}
+
+/* ── Stats bar extras ─────────────────────────────────────────────────────── */
+
+.idx-stats-concept { color: #4a90d9; }
+
+/* ── By Concept view ──────────────────────────────────────────────────────── */
+
+/* Horizontal chip bar at the top of the view */
+.idx-concept-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #1a1a1a;
+  flex-shrink: 0;
+}
+
+.idx-concept-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #141414;
+  border: 1px solid #222;
+  color: #555;
+  font-size: 10.5px;
+  font-weight: 500;
+  border-radius: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
+}
+.idx-concept-chip:hover {
+  background: #1a1a1a;
+  border-color: #2563eb55;
+  color: #7ab8f5;
+}
+.idx-concept-chip.active {
+  background: #0f1f35;
+  border-color: #2563eb;
+  color: #93c5fd;
+}
+
+.idx-concept-chip-count {
+  background: #ffffff11;
+  color: inherit;
+  font-size: 9px;
+  border-radius: 8px;
+  padding: 0 4px;
+  opacity: 0.8;
+}
+.idx-concept-chip.active .idx-concept-chip-count {
+  background: #2563eb33;
+}
+
+/* Concept group section */
+.idx-concept-section {
+  margin-bottom: 6px;
+}
+
+.idx-concept-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 6px;
+  position: sticky;
+  top: 0;
+  background: #0e0e0e;
+  z-index: 3;
+  border-bottom: 1px solid #1e1e1e;
+  border-top: 1px solid #1a1a1a;
+}
+.idx-concept-section:first-child .idx-concept-heading { border-top: none; }
+
+.idx-concept-heading-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a90d9;
+  letter-spacing: 0.04em;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Section label shown in concept view entry rows */
+.idx-entry-section-label {
+  font-size: 9.5px;
+  color: #383838;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+/* ── Part 3: Curation bar ──────────────────────────────────────────────────── */
+
+.idx-curation-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.idx-curation-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 4px;
+  opacity: 0.25;
+  transition: opacity 0.15s, background 0.15s;
+  line-height: 1;
+}
+.idx-curation-btn:hover {
+  opacity: 0.7;
+  background: #ffffff0a;
+}
+.idx-curation-btn.on {
+  opacity: 1;
+}
+.idx-curation-btn.on.flag {
+  background: #ff4d4d18;
+}
+.idx-curation-btn.on.anchor {
+  background: #60a5fa18;
+}
+.idx-curation-btn.on.reviewed {
+  background: #34d39918;
+  color: #34d399;
+}
+
+/* ── Part 3: Related passages ──────────────────────────────────────────────── */
+
+.idx-related-trigger {
+  padding: 4px 12px 8px;
+}
+
+.idx-related-load-btn {
+  background: none;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #4a90d9;
+  font-size: 10.5px;
+  cursor: pointer;
+  padding: 3px 8px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.idx-related-load-btn:hover {
+  border-color: #4a90d9;
+  background: #4a90d910;
+}
+
+.idx-related-loading {
+  padding: 4px 12px 8px;
+  font-size: 10px;
+  color: #444;
+  font-style: italic;
+}
+
+.idx-related {
+  padding: 4px 12px 10px;
+  border-top: 1px dashed #1e1e1e;
+  margin-top: 4px;
+}
+
+.idx-related-header {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #383838;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.idx-related-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 1px solid #1e1e1e;
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.idx-related-item:hover {
+  border-color: #2a3a4a;
+  background: #0f1a25;
+}
+
+.idx-related-page {
+  font-size: 9px;
+  font-weight: 600;
+  color: #4a90d9;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.idx-related-text {
+  font-size: 10px;
+  color: #666;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Part 3: Curated tab sub-filters ───────────────────────────────────────── */
+
+.idx-curated-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid #1a1a1a;
+  position: sticky;
+  top: 0;
+  background: #0e0e0e;
+  z-index: 4;
+}
+
+.idx-curated-tab {
+  background: none;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #555;
+  font-size: 10.5px;
+  cursor: pointer;
+  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.idx-curated-tab:hover {
+  color: #888;
+  border-color: #444;
+}
+.idx-curated-tab.active {
+  color: #93c5fd;
+  border-color: #2563eb;
+  background: #0f1f35;
+}
+
+.idx-curated-entry-card {
+  margin: 6px 12px;
+  border: 1px solid #1e1e1e;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #0a0a0a;
+}
+.idx-curated-entry-card.anchored {
+  border-color: #1e3a5f;
+}
+.idx-curated-entry-card.flagged {
+  border-color: #3f1010;
+}
+
+.idx-curated-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.idx-curated-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.idx-curated-card-text {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Static (non-clickable) concept tag variant */
+.idx-concept-tag.static {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Overflow count button inside entry chip rows (+N / −) */
+.idx-concept-overflow {
+  background: none;
+  border: 1px dashed #1e3a5f55;
+  color: #3a6a9a;
+  font-size: 9px;
+  font-weight: 500;
+  border-radius: 10px;
+  padding: 1px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .12s, color .12s;
+  line-height: 1.4;
+}
+.idx-concept-overflow:hover {
+  border-color: #2563eb55;
+  color: #7ab8f5;
+}
+
+/* Toggle button in Concepts tab chip bar (+N more / − Less) */
+.idx-concept-bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 1px dashed #333;
+  color: #444;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .12s, color .12s;
+}
+.idx-concept-bar-toggle:hover {
+  border-color: #2563eb55;
+  color: #7ab8f5;
+}

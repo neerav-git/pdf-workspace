@@ -1,0 +1,64 @@
+{
+  "pdf_id": 1,
+  "results": [
+    {
+      "name": "App loads without JS errors",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "PDF list visible",
+      "pass": true,
+      "detail": "1 PDFs found"
+    },
+    {
+      "name": "PDF select loads viewer",
+      "pass": true
+    },
+    {
+      "name": "Chat panel with input visible",
+      "pass": true
+    },
+    {
+      "name": "Chat sends and receives formatted response",
+      "pass": true,
+      "detail": {
+        "has_response": true,
+        "has_markdown_bold": true,
+        "has_deep_dive_heading": true
+      }
+    },
+    {
+      "name": "Source page badges visible",
+      "pass": true,
+      "detail": "5 badges"
+    },
+    {
+      "name": "Index tab switches correctly",
+      "pass": true,
+      "detail": "empty-state"
+    },
+    {
+      "name": "Conciseness follow-up: second response shorter",
+      "pass": true,
+      "detail": {
+        "turn_1_words": 394,
+        "turn_2_words": 59,
+        "ratio": 0.15
+      }
+    },
+    {
+      "name": "Viewport layout \u2014 no horizontal overflow",
+      "pass": true,
+      "detail": {
+        "no_overflow_1440": true,
+        "no_overflow_1024": true
+      }
+    }
+  ],
+  "summary": {
+    "total": 9,
+    "passed": 9,
+    "pct": 100
+  }
+}
