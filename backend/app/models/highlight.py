@@ -40,6 +40,7 @@ class QAPair(Base):
     question         = Column(Text, nullable=False)
     answer           = Column(Text, nullable=False)
     source_chunk_ids = Column(JSONB, default=list)   # ChromaDB IDs; resolve at review time
+    selection_text   = Column(Text)                  # the specific text selected when this QA was created
     starred          = Column(Boolean, default=False)
 
     # FSRS state inline (Research B1: no separate memory_items table)

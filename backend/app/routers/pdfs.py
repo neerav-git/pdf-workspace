@@ -239,10 +239,24 @@ async def resolve_chunk(pdf_id: int, req: ResolveChunkRequest, db: Session = Dep
             anchor_text=req.highlight_text,
         )
 
+    # 4. Fetch the chunk text for sentence autocomplete on the frontend.
+    # The frontend uses this to extend a partial selection to the nearest sentence boundary.
+    chunk_text = None
+    try:
+        result = chroma_service._get_collection().get(
+            ids=[chunk_info["chunk_id"]], include=["documents"]
+        )
+        docs = result.get("documents", [])
+        if docs:
+            chunk_text = docs[0]
+    except Exception:
+        pass  # non-fatal — autocomplete just won't run
+
     return {
         "chunk_id": chunk_info["chunk_id"],
         "chunk_index": chunk_info["chunk_index"],
         "section_path": section_path,
+        "chunk_text": chunk_text,
     }
 
 

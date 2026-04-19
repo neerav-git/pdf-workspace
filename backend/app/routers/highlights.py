@@ -18,6 +18,7 @@ class QAPairResponse(BaseModel):
     question: str
     answer: str
     source_chunk_ids: list
+    selection_text: Optional[str]
     starred: bool
     stability: float
     difficulty: float
@@ -75,16 +76,19 @@ class HighlightPatch(BaseModel):
     reviewed: Optional[bool] = None
     concepts: Optional[list] = None
     highlight_texts: Optional[list] = None   # updated when new selections are merged into same chunk
+    highlight_text: Optional[str] = None     # primary selection text; updatable for sentence autocomplete
 
 
 class QAPairCreate(BaseModel):
     question: str
     answer: str
     source_chunk_ids: list = []
+    selection_text: Optional[str] = None
 
 
 class QAPairPatch(BaseModel):
     starred: Optional[bool] = None
+    selection_text: Optional[str] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -109,6 +109,13 @@
   gap: 8px;
 }
 
+.rv-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .rv-source-label {
   font-size: 10px;
   font-weight: 600;
@@ -137,6 +144,35 @@
   line-height: 1.5;
 }
 
+.rv-question--action {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rv-action-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #2d3748;
+  color: #90cdf4;
+  width: fit-content;
+}
+.rv-action-explain   { background: #1a2744; color: #93c5fd; }
+.rv-action-simplify  { background: #1a2d1a; color: #86efac; }
+.rv-action-terms     { background: #2d1a3a; color: #d8b4fe; }
+.rv-action-summarise { background: #2d2a14; color: #fde68a; }
+
+.rv-question-generic {
+  font-size: 15px;
+  color: #aaa;
+  font-style: italic;
+}
+
 /* ── Confidence rating ───────────────────────────────────────────────────────── */
 
 .rv-confidence {
@@ -151,10 +187,33 @@
   white-space: nowrap;
 }
 
+/* Wrapper that stacks buttons + endpoint labels */
+.rv-confidence-scale {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .rv-confidence-options {
   display: flex;
   gap: 6px;
 }
+
+/* Hard / Easy endpoint labels under the scale */
+.rv-confidence-endpoints {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.rv-conf-endpoint {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.rv-conf-endpoint--hard { color: #8a4a4a; }
+.rv-conf-endpoint--easy { color: #4a8a6a; }
 
 .rv-conf-btn {
   width: 32px;
@@ -248,6 +307,19 @@
 .rv-btn--disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.rv-submit-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.rv-submit-hint {
+  font-size: 11px;
+  color: #555;
+  font-style: italic;
 }
 
 .rv-submit {
@@ -452,4 +524,86 @@
   display: flex;
   justify-content: flex-end;
   padding-bottom: 20px;
+}
+
+/* ── Review mode toggle ──────────────────────────────────────────────────────── */
+
+.rv-mode-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rv-mode-info {
+  font-size: 12px;
+  color: #444;
+  cursor: default;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.rv-mode-info:hover { color: #888; }
+
+.rv-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.rv-mode-btn {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #666;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  transition: background .12s, color .12s;
+}
+
+.rv-mode-btn:hover {
+  color: #aaa;
+}
+
+.rv-mode-btn--active {
+  background: #2a1f0e;
+  color: #c8841a;
+}
+
+/* ── Cloze passage (Detail mode) ─────────────────────────────────────────────── */
+
+.rv-source-text--cloze {
+  line-height: 1.8; /* slightly more space so masked blocks don't crowd adjacent lines */
+}
+
+/* Masked word: text is in the DOM but invisible; background block shows length hint */
+.rv-masked-word {
+  background: #444;
+  color: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  display: inline-block;
+  padding: 0 2px;
+  transition: background .15s, color .15s;
+  user-select: none;
+  min-width: 2ch; /* never collapses to zero-width */
+}
+
+.rv-masked-word:hover {
+  background: #5a4010;
+  color: #d4c09a;
+}
+
+.rv-masked-word--revealed {
+  background: #3a2810;
+  color: #c8a060;
+  cursor: pointer;
+}
+
+.rv-masked-word--revealed:hover {
+  background: #2a1a08;
+  color: #aaa;
 }

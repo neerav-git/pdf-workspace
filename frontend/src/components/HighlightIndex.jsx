@@ -161,6 +161,40 @@ function relativeTime(isoString) {
   return `${Math.floor(days / 30)}mo`
 }
 
+// ── SynthesisDisplay — collapsible synthesis block ───────────────────────────
+
+function SynthesisDisplay({ entry, runSynthesis }) {
+  const [collapsed, setCollapsed] = useState(false)
+  return (
+    <div className="idx-synthesis-wrap" onClick={(e) => e.stopPropagation()}>
+      <div className="idx-synthesis-block">
+        <div className="idx-synthesis-header">
+          <span className="idx-synthesis-label">✦ Synthesis</span>
+          <div className="idx-synthesis-actions">
+            <button
+              className="idx-synthesis-collapse"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v) }}
+              title={collapsed ? 'Expand synthesis' : 'Collapse synthesis'}
+            >
+              {collapsed ? '▸' : '▾'}
+            </button>
+            <button
+              className="idx-synthesis-regen"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); runSynthesis() }}
+              title="Regenerate synthesis from current Q&As"
+            >
+              ↺
+            </button>
+          </div>
+        </div>
+        {!collapsed && <p className="idx-synthesis-text">{entry.synthesis}</p>}
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function HighlightIndex() {
@@ -279,7 +313,7 @@ export default function HighlightIndex() {
   // switches to the Concepts view (true in By Page / By Section headers;
   // false in Curated cards where chips are display-only).
 
-  const MAX_VISIBLE_CHIPS = 3
+  const MAX_VISIBLE_CHIPS = 5
 
   function ConceptChips({ entry, navigable = true, stopProp = true }) {
     if (!entry.concepts?.length) return null
@@ -607,24 +641,7 @@ export default function HighlightIndex() {
     }
 
     if (entry.synthesis) {
-      return (
-        <div className="idx-synthesis-wrap" onClick={(e) => e.stopPropagation()}>
-          <div className="idx-synthesis-block">
-            <div className="idx-synthesis-header">
-              <span className="idx-synthesis-label">✦ Synthesis</span>
-              <button
-                className="idx-synthesis-regen"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => { e.stopPropagation(); runSynthesis() }}
-                title="Regenerate synthesis from current Q&As"
-              >
-                ↺
-              </button>
-            </div>
-            <p className="idx-synthesis-text">{entry.synthesis}</p>
-          </div>
-        </div>
-      )
+      return <SynthesisDisplay entry={entry} runSynthesis={runSynthesis} />
     }
 
     return (
@@ -765,12 +782,12 @@ export default function HighlightIndex() {
                       </button>
 
                       <div className="idx-entry-text-wrap">
-                        {/* One button per distinct selection in this chunk — click to scroll + flash */}
+                        {/* One button per distinct selection — click to jump + flash highlight */}
                         {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
                           <button
                             key={ti}
-                            className="idx-entry-text"
-                            title="Jump to this passage in the PDF"
+                            className={`idx-entry-text${text.includes('\n') ? ' idx-entry-text--table' : ''}`}
+                            title={text.includes('\n') ? 'Jump to page (table — exact location not highlighted)' : 'Jump to this passage in the PDF'}
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={(e) => {
                               e.stopPropagation()
@@ -778,36 +795,21 @@ export default function HighlightIndex() {
                               setFlashHighlight({ text, pageNumber: entry.pageNumber })
                             }}
                           >
-                            {text.slice(0, 100)}{text.length > 100 ? '…' : ''}
+                            {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
                           </button>
                         ))}
                         <span className="idx-entry-meta">
-                          {qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}
+                          <span className="idx-entry-meta-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
                           {entry.qaPairs.some((q) => q.starred) && (
-                            <span className="idx-has-stars">
-                              {' '}· ★ {entry.qaPairs.filter((q) => q.starred).length}
-                            </span>
+                            <span className="idx-has-stars">· ★ {entry.qaPairs.filter((q) => q.starred).length}</span>
                           )}
-                          {/* Action type summary badges */}
-                          <span className="idx-entry-badges">
-                            {[...new Set(entry.qaPairs.map((q) => detectAction(q.question).type))]
-                              .filter((t) => t !== 'manual')
-                              .map((t) => {
-                                const a = ACTION_MAP.find((a) => a.type === t)
-                                return a
-                                  ? <span key={t} className={`idx-mini-badge idx-action-${t}`}>{a.label}</span>
-                                  : null
-                              })
-                            }
-                          </span>
+                          {entry.note   && <span className="idx-meta-flag">✎</span>}
+                          {entry.flagged && <span className="idx-meta-flag">🚩</span>}
+                          {entry.anchored && <span className="idx-meta-flag">⚓</span>}
                         </span>
-                        {/* Concept chips — below meta so activity info is seen first */}
-                        <ConceptChips entry={entry} navigable={true} />
                       </div>
 
                       <div className="idx-entry-right">
-                        {entry.note && <span className="idx-note-indicator" title={entry.note}>✎</span>}
-                        <CurationBar entry={entry} />
                         <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
                         <button
                           className="idx-del"
@@ -818,9 +820,14 @@ export default function HighlightIndex() {
                       </div>
                     </div>
 
-                    {/* Annotation + Q&A list + related passages */}
+                    {/* Expanded body: concepts + curation + annotation + Q&As + related */}
                     {isOpen && (
                       <>
+                        {/* Concept chips + curation toggles — only shown when expanded */}
+                        <div className="idx-entry-expanded-header">
+                          <ConceptChips entry={entry} navigable={true} />
+                          <CurationBar entry={entry} />
+                        </div>
                         <AnnotationField entry={entry} />
                         <SynthesisSection entry={entry} />
                         <ul className="idx-qa-list">
@@ -922,6 +929,7 @@ export default function HighlightIndex() {
                                     p.{entry.pageNumber}
                                   </button>
                                 </div>
+                                <span className="idx-entry-source-label">Highlight</span>
                                 {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
                                   <button
                                     key={ti}
@@ -934,32 +942,21 @@ export default function HighlightIndex() {
                                       setFlashHighlight({ text, pageNumber: entry.pageNumber })
                                     }}
                                   >
-                                    {text.slice(0, 100)}{text.length > 100 ? '…' : ''}
+                                    {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
                                   </button>
                                 ))}
                                 <span className="idx-entry-meta">
-                                  {qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}
+                                  <span className="idx-entry-meta-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
                                   {entry.qaPairs.some((q) => q.starred) && (
-                                    <span className="idx-has-stars"> · ★ {entry.qaPairs.filter((q) => q.starred).length}</span>
+                                    <span className="idx-has-stars">· ★ {entry.qaPairs.filter((q) => q.starred).length}</span>
                                   )}
-                                  <span className="idx-entry-badges">
-                                    {[...new Set(entry.qaPairs.map((q) => detectAction(q.question).type))]
-                                      .filter((t) => t !== 'manual')
-                                      .map((t) => {
-                                        const a = ACTION_MAP.find((a) => a.type === t)
-                                        return a
-                                          ? <span key={t} className={`idx-mini-badge idx-action-${t}`}>{a.label}</span>
-                                          : null
-                                      })
-                                    }
-                                  </span>
+                                  {entry.note    && <span className="idx-meta-flag">✎</span>}
+                                  {entry.flagged && <span className="idx-meta-flag">🚩</span>}
+                                  {entry.anchored && <span className="idx-meta-flag">⚓</span>}
                                 </span>
-                                <ConceptChips entry={entry} navigable={true} />
                               </div>
 
                               <div className="idx-entry-right">
-                                {entry.note && <span className="idx-note-indicator" title={entry.note}>✎</span>}
-                                <CurationBar entry={entry} />
                                 <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
                                 <button
                                   className="idx-del"
@@ -972,6 +969,10 @@ export default function HighlightIndex() {
 
                             {isOpen && (
                               <>
+                                <div className="idx-entry-expanded-header">
+                                  <ConceptChips entry={entry} navigable={true} />
+                                  <CurationBar entry={entry} />
+                                </div>
                                 <AnnotationField entry={entry} />
                                 <SynthesisSection entry={entry} />
                                 <ul className="idx-qa-list">
@@ -1127,28 +1128,31 @@ export default function HighlightIndex() {
                                     setFlashHighlight({ text, pageNumber: entry.pageNumber })
                                   }}
                                 >
-                                  {text.slice(0, 100)}{text.length > 100 ? '…' : ''}
+                                  {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
                                 </button>
                               ))}
                               <span className="idx-entry-meta">
-                                {qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}
+                                <span className="idx-entry-meta-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
+                                {entry.note    && <span className="idx-meta-flag">✎</span>}
+                                {entry.flagged && <span className="idx-meta-flag">🚩</span>}
                               </span>
-                              {/* Show OTHER concepts (not the one we're browsing) */}
-                              <ConceptChips
-                                entry={{ ...entry, concepts: entry.concepts.filter((c) => c !== activeConcept) }}
-                                navigable={true}
-                              />
                             </div>
 
                             <div className="idx-entry-right">
-                              {entry.note && <span className="idx-note-indicator" title={entry.note}>✎</span>}
-                              <CurationBar entry={entry} />
                               <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
                             </div>
                           </div>
 
                           {isOpen && (
                             <>
+                              {/* Other concepts (not the one being browsed) + curation in expanded body */}
+                              <div className="idx-entry-expanded-header">
+                                <ConceptChips
+                                  entry={{ ...entry, concepts: entry.concepts.filter((c) => c !== activeConcept) }}
+                                  navigable={true}
+                                />
+                                <CurationBar entry={entry} />
+                              </div>
                               <AnnotationField entry={entry} />
                               <SynthesisSection entry={entry} />
                               <ul className="idx-qa-list">

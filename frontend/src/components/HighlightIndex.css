@@ -32,11 +32,11 @@
   gap: 6px;
   padding: 5px 12px;
   font-size: 11px;
-  color: #4a4a4a;
+  color: #6a6a6a;
   border-bottom: 1px solid #1e1e1e;
   flex-shrink: 0;
 }
-.idx-stats-sep  { color: #2e2e2e; }
+.idx-stats-sep  { color: #444; }
 .idx-stats-star { color: #fbbf24; }
 
 /* ── View tabs ────────────────────────────────────────────────────────────── */
@@ -51,7 +51,7 @@
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #4a4a4a;
+  color: #666;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.03em;
@@ -63,7 +63,7 @@
   justify-content: center;
   gap: 5px;
 }
-.idx-view-tab:hover { color: #888; }
+.idx-view-tab:hover { color: #999; }
 .idx-view-tab.active { color: #e0e0e0; border-bottom-color: #2563eb; }
 
 .idx-tab-count {
@@ -97,8 +97,10 @@
   top: 0;
   background: #111;
   z-index: 2;
-  border-bottom: 1px solid #1a1a1a;
+  border-bottom: 1px solid #222;
+  border-top: 1px solid #1a1a1a;
 }
+.idx-page-section:first-child .idx-page-heading { border-top: none; }
 
 .idx-page-num {
   background: #172033;
@@ -117,7 +119,7 @@
 .idx-page-num:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
 .idx-page-num.small { font-size: 10px; padding: 2px 6px; }
 
-.idx-page-count { font-size: 10px; color: #383838; }
+.idx-page-count { font-size: 10px; color: #666; }
 
 /* ── Section heading (By Section view — legacy flat, kept for compat) ─────── */
 
@@ -231,8 +233,8 @@
 /* ── Highlight entry card ─────────────────────────────────────────────────── */
 
 .idx-entry {
-  margin: 5px 10px 3px;
-  border: 1px solid #1e1e1e;
+  margin: 5px 10px 4px;
+  border: 1px solid #272727;
   border-radius: 8px;
   overflow: hidden;
   transition: border-color .15s;
@@ -255,7 +257,7 @@
   background: none;
   border: none;
   font-size: 13px;
-  color: #2e2e2e;
+  color: #666;
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
@@ -277,12 +279,12 @@
 /* Pull-quote style for the highlighted passage */
 /* idx-entry-text is now a <button> — reset button defaults, keep pull-quote look */
 .idx-entry-text {
-  font-size: 11.5px;
-  color: #7a7a7a;
+  font-size: 12px;
+  color: #b8b8b8;
   font-style: italic;
   line-height: 1.5;
   word-break: break-word;
-  border-left: 2px solid #2e2e2e;
+  border-left: 2px solid #3a3a3a;
   padding-left: 7px;
   /* button reset */
   background: none;
@@ -306,13 +308,54 @@
 /* When an entry has multiple passage texts, add a small gap between them */
 .idx-entry-text + .idx-entry-text { margin-top: 5px; }
 
+/* Table/structured content — navigates to page but can't pinpoint location */
+.idx-entry-text--table {
+  color: #888;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* Expanded-only header row: concept chips + curation toggles side by side */
+.idx-entry-expanded-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 4px 10px;
+  border-top: 1px solid #1e1e1e;
+}
+.idx-entry-expanded-header .idx-concept-row { flex: 1; min-width: 0; }
+.idx-entry-expanded-header .idx-curation-bar { flex-shrink: 0; }
+
+/* Compact state indicators in the collapsed header meta row */
+.idx-meta-flag {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+/* "Highlight" label — kept for standalone use but not in collapsed header */
+.idx-entry-source-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #555;
+  margin-bottom: 2px;
+}
+
+/* Count label in meta row */
+.idx-entry-meta-count {
+  color: #888;
+}
+
 .idx-entry-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
   font-size: 10px;
-  color: #383838;
+  color: #777;
 }
 .idx-has-stars { color: #fbbf24; }
 
@@ -339,12 +382,12 @@
   flex-shrink: 0;
   margin-top: 1px;
 }
-.idx-chevron { font-size: 10px; color: #383838; }
+.idx-chevron { font-size: 10px; color: #777; }
 
 .idx-del {
   background: none;
   border: none;
-  color: #2a2a2a;
+  color: #666;
   cursor: pointer;
   font-size: 10px;
   padding: 2px 3px;
@@ -366,7 +409,7 @@
 
 .idx-qa-empty {
   font-size: 11px;
-  color: #2e2e2e;
+  color: #555;
   padding: 10px 14px;
   font-style: italic;
 }
@@ -404,7 +447,7 @@
   flex: 1;
   min-width: 0;
   font-size: 11px;
-  color: #3e3e3e;
+  color: #888;
   font-style: italic;
   white-space: nowrap;
   overflow: hidden;
@@ -415,7 +458,7 @@
 .idx-qa-time {
   flex: 0 0 auto;
   font-size: 10px;
-  color: #2e2e2e;
+  color: #666;
   white-space: nowrap;
 }
 
@@ -479,7 +522,7 @@
 /* Expanded markdown answer */
 .idx-qa-a-markdown {
   font-size: 12px;
-  color: #5e5e5e;
+  color: #8a8a8a;
   line-height: 1.65;
   word-break: break-word;
   margin-bottom: 4px;
@@ -489,7 +532,7 @@
 .idx-qa-a-markdown ul,
 .idx-qa-a-markdown ol { margin: 3px 0 6px 16px; padding: 0; }
 .idx-qa-a-markdown li { margin-bottom: 3px; }
-.idx-qa-a-markdown strong { color: #888; }
+.idx-qa-a-markdown strong { color: #aaa; }
 .idx-qa-a-markdown code {
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
@@ -506,17 +549,17 @@
   margin: 6px 0 3px;
 }
 .idx-qa-a-markdown blockquote {
-  border-left: 2px solid #2e2e2e;
+  border-left: 2px solid #333;
   margin: 4px 0;
   padding-left: 8px;
-  color: #4a4a4a;
+  color: #666;
 }
 
 /* Expand / collapse button */
 .idx-expand-btn {
   background: none;
   border: none;
-  color: #383838;
+  color: #555;
   font-size: 10px;
   cursor: pointer;
   padding: 0;
@@ -537,16 +580,16 @@
   width: 100%;
   text-align: left;
   background: none;
-  border: 1px dashed #1e1e1e;
+  border: 1px dashed #333;
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 11px;
-  color: #282828;
+  color: #666;
   cursor: pointer;
   font-family: inherit;
   transition: border-color 0.15s, color 0.15s;
 }
-.idx-note-add:hover { border-color: #333; color: #555; }
+.idx-note-add:hover { border-color: #555; color: #999; }
 
 /* Inline textarea when editing */
 .idx-note-input {
@@ -567,7 +610,7 @@
   display: block;
 }
 .idx-note-input:focus { border-color: #3a3a3a; border-left-color: #6a6040; }
-.idx-note-input::placeholder { color: #2e2e2e; }
+.idx-note-input::placeholder { color: #444; }
 
 /* Saved note display — click to re-edit */
 .idx-note-display {
@@ -617,16 +660,16 @@
   width: 100%;
   text-align: left;
   background: none;
-  border: 1px dashed #1e2a1e;
+  border: 1px dashed #2a4a2a;
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 11px;
-  color: #253525;
+  color: #4a7a4a;
   cursor: pointer;
   font-family: inherit;
   transition: border-color 0.15s, color 0.15s;
 }
-.idx-synthesis-trigger:hover { border-color: #2e5a2e; color: #4a8a4a; }
+.idx-synthesis-trigger:hover { border-color: #3a7a3a; color: #6ab46a; }
 
 /* Loading state */
 .idx-synthesis-loading {
@@ -634,14 +677,14 @@
   align-items: center;
   gap: 7px;
   font-size: 11px;
-  color: #2e5a2e;
+  color: #4a8a4a;
   padding: 5px 8px;
 }
 .idx-synthesis-spinner {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border: 1.5px solid #1e3a1e;
+  border: 1.5px solid #2a4a2a;
   border-top-color: #4ade80;
   border-radius: 50%;
   animation: idx-spin 0.7s linear infinite;
@@ -651,9 +694,9 @@
 
 /* Generated synthesis block */
 .idx-synthesis-block {
-  background: #0a0f0a;
-  border: 1px solid #1a2a1a;
-  border-left: 2px solid #2e5a2e;
+  background: #111a11;
+  border: 1px solid #243a24;
+  border-left: 2px solid #4ade80;
   border-radius: 4px;
   padding: 7px 9px;
 }
@@ -670,14 +713,33 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #2e5a2e;
+  color: #4ade80;
 }
+
+.idx-synthesis-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.idx-synthesis-collapse {
+  background: none;
+  border: 1px solid #2a4a2a;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #7ab87a;
+  cursor: pointer;
+  padding: 1px 6px;
+  line-height: 1.4;
+  transition: color 0.15s, border-color 0.15s;
+}
+.idx-synthesis-collapse:hover { color: #4ade80; border-color: #4ade80; }
 
 .idx-synthesis-regen {
   background: none;
   border: none;
   font-size: 12px;
-  color: #2e3a2e;
+  color: #4a7a4a;
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -687,7 +749,7 @@
 
 .idx-synthesis-text {
   font-size: 12px;
-  color: #5a8a5a;
+  color: #a8d4a8;
   line-height: 1.6;
   margin: 0;
   word-break: break-word;
@@ -710,7 +772,7 @@
 
 .idx-starred-highlight {
   font-size: 10.5px;
-  color: #444;
+  color: #888;
   font-style: italic;
   white-space: nowrap;
   overflow: hidden;
@@ -767,8 +829,8 @@
   align-items: center;
   gap: 5px;
   background: #141414;
-  border: 1px solid #222;
-  color: #555;
+  border: 1px solid #2a2a2a;
+  color: #777;
   font-size: 10.5px;
   font-weight: 500;
   border-radius: 12px;
@@ -789,12 +851,13 @@
 }
 
 .idx-concept-chip-count {
-  background: #ffffff11;
+  background: #ffffff15;
   color: inherit;
   font-size: 9px;
   border-radius: 8px;
-  padding: 0 4px;
-  opacity: 0.8;
+  padding: 0 5px;
+  opacity: 0.85;
+  margin-left: 2px;
 }
 .idx-concept-chip.active .idx-concept-chip-count {
   background: #2563eb33;
@@ -857,13 +920,14 @@
   padding: 2px 4px;
   font-size: 12px;
   border-radius: 4px;
-  opacity: 0.25;
+  opacity: 0.45;
+  color: #ccc;
   transition: opacity 0.15s, background 0.15s;
   line-height: 1;
 }
 .idx-curation-btn:hover {
-  opacity: 0.7;
-  background: #ffffff0a;
+  opacity: 0.85;
+  background: #ffffff12;
 }
 .idx-curation-btn.on {
   opacity: 1;

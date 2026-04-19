@@ -79,7 +79,7 @@ export default function PDFSidebar() {
             <div className="pdf-icon">📄</div>
             <div className="pdf-info">
               <span className="pdf-title">{pdf.title}</span>
-              <span className="pdf-meta">{pdf.page_count} pages · {pdf.chunk_count} chunks</span>
+              <span className="pdf-meta">{pdf.page_count} pages</span>
             </div>
             <button
               className="pdf-delete"

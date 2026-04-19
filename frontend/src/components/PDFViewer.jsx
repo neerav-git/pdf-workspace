@@ -9,23 +9,167 @@ import { usePersistentHighlight } from '../hooks/usePersistentHighlight'
 import SelectionMenu from './SelectionMenu'
 import './PDFViewer.css'
 
-// ── Highlight Lens — CSS Custom Highlight API ─────────────────────────────────
+// ── Highlight Popover ─────────────────────────────────────────────────────────
+// Shown when user clicks a lens overlay. Two actions:
+//   → View in Index — scrolls the Index tab to this entry and shows its Q&A history
+//   ▶ Review now   — launches a single-card review session for all Q&As on this entry
+// Positioning: fixed, flipped left/up if too close to viewport edges.
 
-const LENS_SUPPORTED = typeof CSS !== 'undefined' && typeof CSS.highlights !== 'undefined'
+function HighlightPopover({ entryId, x, y, onClose }) {
+  const { highlightIndex, openReview } = useAppStore()
+  const ref = useRef(null)
 
-// Named highlights for each curation state
-const LENS_NAMES = {
-  default:  'pdf-lens',
-  flagged:  'pdf-lens-flagged',
-  anchored: 'pdf-lens-anchored',
-  reviewed: 'pdf-lens-reviewed',
+  // Close on outside click or Escape
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    const handleKey   = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  // Flip position after mount so popover stays inside viewport
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const MARGIN = 10
+    const rect = el.getBoundingClientRect()
+    if (rect.right > window.innerWidth - MARGIN)
+      el.style.left = `${x - rect.width - MARGIN}px`
+    if (rect.bottom > window.innerHeight - MARGIN)
+      el.style.top = `${y - rect.height - MARGIN}px`
+    el.style.visibility = 'visible'
+  }, [x, y])
+
+  const entry = highlightIndex.find((e) => e.id === entryId)
+  if (!entry) return null
+
+  const qaCount  = entry.qaPairs?.length ?? 0
+  const excerpt  = (entry.highlightText || '').replace(/\s+/g, ' ').trim()
+  const preview  = excerpt.length > 72 ? excerpt.slice(0, 72).trimEnd() + '…' : excerpt
+  const section  = entry.sectionTitle || null
+
+  const handleViewIndex = () => {
+    useAppStore.setState({
+      pendingSelectionAction: {
+        id: 'view-index',
+        text: entry.highlightText,
+        pageNumber: entry.pageNumber,
+      },
+    })
+    onClose()
+  }
+
+  const handleReview = () => {
+    const cards = entry.qaPairs.map((qa) => ({
+      ...qa,
+      highlight_text: entry.highlightText,
+      section_title:  entry.sectionTitle,
+      page_number:    entry.pageNumber,
+    }))
+    openReview({ cards })
+    onClose()
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="hl-popover"
+      style={{ position: 'fixed', left: x, top: y, visibility: 'hidden' }}
+    >
+      {/* Passage excerpt */}
+      <div className="hl-popover-excerpt">"{preview}"</div>
+      {section && <div className="hl-popover-section">{section}{entry.pageNumber ? ` · p. ${entry.pageNumber}` : ''}</div>}
+
+      {/* Stats row */}
+      <div className="hl-popover-meta">
+        <span className="hl-popover-qa-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
+        {entry.flagged  && <span className="hl-popover-badge hl-badge-flagged">Flagged</span>}
+        {entry.anchored && <span className="hl-popover-badge hl-badge-anchored">Anchored</span>}
+        {entry.starred  && <span className="hl-popover-badge hl-badge-starred">★</span>}
+      </div>
+
+      {/* Actions */}
+      <div className="hl-popover-actions">
+        <button className="hl-popover-btn hl-popover-btn--index" onClick={handleViewIndex}>
+          → Index
+        </button>
+        {qaCount > 0 && (
+          <button className="hl-popover-btn hl-popover-btn--review" onClick={handleReview}>
+            ▶ Review
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
-function lensNameForEntry(entry) {
-  if (entry.flagged)  return LENS_NAMES.flagged
-  if (entry.anchored) return LENS_NAMES.anchored
-  if (entry.reviewed) return LENS_NAMES.reviewed
-  return LENS_NAMES.default
+// ── Highlight overlay approach ────────────────────────────────────────────────
+// We create absolutely-positioned <div> overlays inside the page wrapper.
+// range.getClientRects() gives exact pixel positions; we convert to page-relative
+// coordinates.  This is browser-agnostic: no CSS Custom Highlight API, no span
+// class trickery — just plain divs positioned on top of the canvas.
+
+const HL_OVERLAY = 'pdf-hl-overlay'
+const LENS_CLASS          = 'pdf-hl-lens'
+const LENS_CLASS_FLAGGED  = 'pdf-hl-lens-flagged'
+const LENS_CLASS_ANCHORED = 'pdf-hl-lens-anchored'
+const LENS_CLASS_REVIEWED = 'pdf-hl-lens-reviewed'
+const FLASH_CLASS         = 'pdf-hl-flash'
+const LENS_CLASSES        = [LENS_CLASS, LENS_CLASS_FLAGGED, LENS_CLASS_ANCHORED, LENS_CLASS_REVIEWED]
+
+function lensClassForEntry(entry) {
+  if (entry.flagged)  return LENS_CLASS_FLAGGED
+  if (entry.anchored) return LENS_CLASS_ANCHORED
+  if (entry.reviewed) return LENS_CLASS_REVIEWED
+  return LENS_CLASS
+}
+
+/**
+ * Create overlay <div> elements inside `pageWrapper` that cover `range`.
+ * Returns the array of created divs (caller can remove them on timeout).
+ * pageWrapper must be `position: relative`.
+ */
+function addOverlaysForRange(pageWrapper, range, className, onClick = null) {
+  if (!pageWrapper || !range) return []
+  const wrapperRect = pageWrapper.getBoundingClientRect()
+  const rects = range.getClientRects()
+  const created = []
+  for (const rect of rects) {
+    if (rect.width < 1 || rect.height < 1) continue
+    const div = document.createElement('div')
+    div.className = `${HL_OVERLAY} ${className}`
+    const interactive = onClick !== null
+    div.style.cssText =
+      `position:absolute;` +
+      `left:${rect.left - wrapperRect.left}px;` +
+      `top:${rect.top - wrapperRect.top}px;` +
+      `width:${rect.width}px;` +
+      `height:${rect.height}px;` +
+      `pointer-events:${interactive ? 'auto' : 'none'};` +
+      `cursor:${interactive ? 'pointer' : 'default'};` +
+      `z-index:2;border-radius:2px;`
+    if (onClick) div.addEventListener('click', onClick)
+    pageWrapper.appendChild(div)
+    created.push(div)
+  }
+  return created
+}
+
+/** Remove overlay divs for the given class from a specific page wrapper. */
+function clearPageOverlays(pageWrapper, className) {
+  if (!pageWrapper) return
+  const sel = className ? `.${HL_OVERLAY}.${className}` : `.${HL_OVERLAY}`
+  pageWrapper.querySelectorAll(sel).forEach((el) => el.remove())
+}
+
+/** Remove ALL lens overlays from the entire document. */
+function clearLens() {
+  const sel = LENS_CLASSES.map((c) => `.${HL_OVERLAY}.${c}`).join(',')
+  document.querySelectorAll(sel).forEach((el) => el.remove())
 }
 
 /**
@@ -68,45 +212,62 @@ function findTextRange(container, searchText) {
     }
   }
 
-  // Anchor = first 60 chars of normalized search text
-  const anchor = searchText.replace(/\s+/g, ' ').trim().slice(0, 60)
+  // De-hyphenate PDF line-break artifacts before building anchor.
+  // PyMuPDF extracts hyphenated words as "treat-\nments" — strip the hyphen+newline
+  // so the anchor can match "treatments" in the PDF text layer.
+  const dehyphenated = searchText.replace(/-\r?\n/g, '').replace(/-\n/g, '')
+
+  // Anchor = first 60 chars of normalized, de-hyphenated search text
+  const anchor = dehyphenated.replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!anchor) return null
 
   let si = norm.toLowerCase().indexOf(anchor.toLowerCase())
 
-  // Strategy 2: strip all whitespace from both sides and retry.
-  // Chrome's selection.toString() inserts spaces between adjacent PDF.js spans that have
-  // no whitespace in their text nodes (e.g. stored "the Bartonella", DOM "theBartonella").
-  if (si === -1) {
-    let flatStripped = ''
-    const s2f = []   // strippedIdx → flatIdx
+  // Helper: try a stripped search using a given strip-chars regex, return range or null.
+  function tryStripped(stripRe, fullText) {
+    // Use split/join to remove ALL matching chars (avoids missing-g-flag pitfall)
+    const stripAll = (s) => s.split(stripRe).join('')
+    let stripped = ''
+    const i2f = []
     for (let fi = 0; fi < flat.length; fi++) {
-      if (!/\s/.test(flat[fi])) { flatStripped += flat[fi]; s2f.push(fi) }
+      if (!stripRe.test(flat[fi])) { stripped += flat[fi]; i2f.push(fi) }
     }
-    const anchorStripped = anchor.replace(/\s/g, '')
-    const fullStripped   = searchText.replace(/\s/g, '').slice(0, 200)
-    const si2 = flatStripped.toLowerCase().indexOf(anchorStripped.toLowerCase())
+    const anchorS = stripAll(anchor)
+    const fullS   = stripAll(fullText).slice(0, 300)
+    const si2 = stripped.toLowerCase().indexOf(anchorS.toLowerCase())
     if (si2 === -1) return null
-
-    const flatStart2 = s2f[si2]
-    const flatEnd2   = s2f[Math.min(si2 + fullStripped.length - 1, s2f.length - 1)]
-    if (flatStart2 === undefined || flatEnd2 === undefined) return null
-    const s2 = src[flatStart2]
-    const e2 = src[flatEnd2]
+    const flatStart = i2f[si2]
+    const flatEnd   = i2f[Math.min(si2 + fullS.length - 1, i2f.length - 1)]
+    if (flatStart === undefined || flatEnd === undefined) return null
+    const s2 = src[flatStart]
+    const e2 = src[flatEnd]
     if (!s2 || !e2) return null
     try {
-      const range = document.createRange()
-      range.setStart(s2.node, s2.offset)
-      range.setEnd(e2.node, Math.min(e2.offset + 1, e2.node.textContent.length))
-      return range
+      const r = document.createRange()
+      r.setStart(s2.node, s2.offset)
+      r.setEnd(e2.node, Math.min(e2.offset + 1, e2.node.textContent.length))
+      return r
     } catch { return null }
+  }
+
+  if (si === -1) {
+    // Strategy 2: strip whitespace — handles spans with no inter-span spaces.
+    const r2 = tryStripped(/\s/, searchText)
+    if (r2) return r2
+
+    // Strategy 3: strip whitespace AND hyphens — handles pdf.js line-break hyphens
+    // (e.g. pdf.js renders "treat-ments" across two spans; PyMuPDF stored "treatments").
+    const r3 = tryStripped(/[\s-]/, searchText)
+    if (r3) return r3
+
+    return null
   }
 
   // Extend from anchor match to cover the full stored text.
   // Don't re-search for fullNorm — when spaces differ (DOM vs selection.toString)
   // a second indexOf returns -1 and the fallback truncates to 60 chars.
   // The anchor already pinned the start; extending by fullNorm.length is correct.
-  const fullNorm = searchText.replace(/\s+/g, ' ').trim()
+  const fullNorm = dehyphenated.replace(/\s+/g, ' ').trim()
   const ei = si + Math.min(fullNorm.length, norm.length - si)
 
   const flatStart = n2f[si]
@@ -127,11 +288,6 @@ function findTextRange(container, searchText) {
   }
 }
 
-function clearLens() {
-  if (!LENS_SUPPORTED) return
-  Object.values(LENS_NAMES).forEach((name) => CSS.highlights.delete(name))
-}
-
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
 const RENDER_WINDOW = 3
@@ -150,10 +306,14 @@ export default function PDFViewer() {
     highlightIndex,
     flashHighlight,
     consumeFlashHighlight,
+    openReview,
   } = useAppStore()
 
+  const [highlightPopover, setHighlightPopover] = useState(null) // { entryId, x, y }
   const [scale, setScale]           = useState(1.0)
-  const [lensEnabled, setLensEnabled] = useState(false)
+  const [lensEnabled, setLensEnabled] = useState(
+    () => localStorage.getItem('lens-enabled') === 'true'
+  )
   const [loadError, setLoadError] = useState(null)
   const [selectionMenu, setSelectionMenu] = useState(null)
   const [pageInputVal, setPageInputVal] = useState('')
@@ -184,16 +344,24 @@ export default function PDFViewer() {
   const applyLensToPageRef   = useRef(null)
   const textLayerHandlerCache = useRef({})
 
+  // Returns true if the highlight was applied; false if text not found or API unavailable.
+  // Callers use the return value to decide whether to store a pending flash for retry.
   const applyFlash = useCallback((pageNum, text) => {
-    if (!LENS_SUPPORTED) return
     const wrapper = pageRefs.current[pageNum]
-    if (!wrapper) return
+    if (!wrapper) return false
     const textLayer = wrapper.querySelector('.textLayer')
-    if (!textLayer) return
-    const range = findTextRange(textLayer, text)
-    if (!range) return
-    CSS.highlights.set('pdf-flash', new Highlight(range))
-    setTimeout(() => CSS.highlights.delete('pdf-flash'), 2500)
+    if (!textLayer) return false
+    try {
+      const range = findTextRange(textLayer, text)
+      if (!range) return false
+      clearPageOverlays(wrapper, FLASH_CLASS)
+      const created = addOverlaysForRange(wrapper, range, FLASH_CLASS)
+      if (created.length === 0) return false
+      setTimeout(() => created.forEach((el) => el.remove()), 3500)
+      return true
+    } catch {
+      return false
+    }
   }, [])
 
   // Fires when flashHighlight is set (from index passage click)
@@ -202,11 +370,23 @@ export default function PDFViewer() {
     const { text, pageNumber } = flashHighlight
     consumeFlashHighlight()
 
-    // If text layer is already rendered, apply immediately
+    // If text layer is already rendered, try immediately.
+    // If applyFlash returns false (text not found or CSS Highlight API threw), still
+    // store as pending — the text layer may be in mid-render and will stabilize shortly.
     const wrapper = pageRefs.current[pageNumber]
     const textLayer = wrapper?.querySelector('.textLayer')
     if (textLayer) {
-      applyFlash(pageNumber, text)
+      const ok = applyFlash(pageNumber, text)
+      if (!ok) {
+        // findTextRange failed on an existing text layer — text nodes may still be
+        // populating (react-pdf renders spans asynchronously).  Retry after 300ms.
+        setTimeout(() => {
+          if (!applyFlash(pageNumber, text)) {
+            // Second attempt at 600ms
+            setTimeout(() => applyFlash(pageNumber, text), 300)
+          }
+        }, 300)
+      }
     } else {
       // Text layer not rendered yet — store for onRenderTextLayerSuccess
       pendingFlashRef.current = { text, pageNumber }
@@ -216,11 +396,14 @@ export default function PDFViewer() {
   // ── Highlight Lens ─────────────────────────────────────────────────────────
 
   const applyLensToPage = useCallback((pageNum) => {
-    if (!LENS_SUPPORTED || !selectedPdf) return
+    if (!selectedPdf) return
     const wrapper = pageRefs.current[pageNum]
     if (!wrapper) return
     const textLayer = wrapper.querySelector('.textLayer')
     if (!textLayer) return
+
+    // Clear stale lens overlays for this page before redrawing
+    LENS_CLASSES.forEach((c) => clearPageOverlays(wrapper, c))
 
     const entries = highlightIndex.filter(
       (e) => e.pdfId === selectedPdf.id && e.pageNumber === pageNum,
@@ -231,16 +414,16 @@ export default function PDFViewer() {
       // highlightTexts[] holds all distinct selections for this chunk entry.
       // Fall back to [highlightText] for entries saved before multi-select support.
       const texts = entry.highlightTexts?.length > 0 ? entry.highlightTexts : [entry.highlightText]
-      const hlName = lensNameForEntry(entry)
+      const cls = lensClassForEntry(entry)
+      // Click handler — stable closure capturing entry.id; opens the popover
+      const handleClick = (e) => {
+        e.stopPropagation()
+        setHighlightPopover({ entryId: entry.id, x: e.clientX, y: e.clientY + 12 })
+      }
       for (const text of texts) {
         const range = findTextRange(textLayer, text)
         if (!range) continue
-        const existing = CSS.highlights.get(hlName)
-        if (existing) {
-          existing.add(range)
-        } else {
-          CSS.highlights.set(hlName, new Highlight(range))
-        }
+        addOverlaysForRange(wrapper, range, cls, handleClick)
       }
     }
   }, [selectedPdf, highlightIndex])
@@ -471,7 +654,8 @@ export default function PDFViewer() {
       <div className="viewer viewer-empty">
         <div className="viewer-placeholder">
           <span className="viewer-placeholder-icon">📄</span>
-          <p>Select a PDF from the library to view it</p>
+          <p>Select a PDF to start reading</p>
+          <p className="viewer-placeholder-hint">← Upload a PDF from the sidebar, then select it to begin</p>
         </div>
       </div>
     )
@@ -495,10 +679,14 @@ export default function PDFViewer() {
             </button>
           )}
 
-          {LENS_SUPPORTED && highlightIndex.some((e) => e.pdfId === selectedPdf?.id) && (
+          {highlightIndex.some((e) => e.pdfId === selectedPdf?.id) && (
             <button
               className={`viewer-btn viewer-lens-btn ${lensEnabled ? 'active' : ''}`}
-              onClick={() => setLensEnabled((v) => !v)}
+              onClick={() => setLensEnabled((v) => {
+                const next = !v
+                localStorage.setItem('lens-enabled', next)
+                return next
+              })}
               title={lensEnabled ? 'Hide indexed passage highlights' : 'Show indexed passages in PDF'}
             >
               {lensEnabled ? '◉' : '◎'}
@@ -677,6 +865,15 @@ export default function PDFViewer() {
           pageNumber={selectionMenu.pageNumber}
           onAction={handleMenuAction}
           onClose={handleMenuClose}
+        />
+      )}
+
+      {highlightPopover && (
+        <HighlightPopover
+          entryId={highlightPopover.entryId}
+          x={highlightPopover.x}
+          y={highlightPopover.y}
+          onClose={() => setHighlightPopover(null)}
         />
       )}
     </div>

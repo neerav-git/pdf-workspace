@@ -82,6 +82,9 @@ class DueCardResponse(BaseModel):
     due_at: Any
     # Highlight context for review UI (amber source passage box)
     highlight_text: str
+    # Full source passage text from ChromaDB — more complete than highlight_text
+    # which is the user's raw selection and may contain PDF extraction artifacts.
+    source_passage: Optional[str] = None
     page_number: Optional[int]
     section_title: Optional[str]
     pdf_id: int
@@ -266,6 +269,12 @@ def get_review_stats(db: Session = Depends(get_db)):
 
 def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
     h = qa.highlight_entry
+    # Fetch full source passage from ChromaDB for display in review session.
+    # This is more complete than highlight_text, which is the user's raw PDF selection
+    # and may have line-break artifacts or cut-off text.
+    source_passage = None
+    if qa.source_chunk_ids:
+        source_passage = get_source_text(qa.source_chunk_ids) or None
     return DueCardResponse(
         id               = qa.id,
         highlight_id     = qa.highlight_id,
@@ -276,7 +285,12 @@ def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
         stability        = qa.stability or 0.0,
         reps             = qa.reps or 0,
         due_at           = qa.due_at,
-        highlight_text   = h.highlight_text if h else "",
+        # Prefer QA-specific selection text (set when the QA was created from a specific
+        # selection) over the parent entry's primary highlight_text.  This ensures the
+        # review source passage shows what the user was actually looking at when they
+        # asked the question, not just the first selection that created the index entry.
+        highlight_text   = qa.selection_text or (h.highlight_text if h else ""),
+        source_passage   = source_passage,
         page_number      = h.page_number if h else None,
         section_title    = h.section_title if h else None,
         pdf_id           = h.pdf_id if h else 0,

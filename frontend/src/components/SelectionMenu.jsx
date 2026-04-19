@@ -7,10 +7,10 @@ const ACTIONS = [
   { id: 'explain',    icon: '❓', label: 'Explain',      prompt: (t) => `Explain this passage in detail:\n\n"${t}"` },
   { id: 'simplify',  icon: '✨', label: 'Simplify',     prompt: (t) => `Explain this in simple, plain language:\n\n"${t}"` },
   { id: 'terms',     icon: '📖', label: 'Key Terms',    prompt: (t) => `Identify and define the key terms and concepts in:\n\n"${t}"` },
-  { id: 'quiz',      icon: '🧠', label: 'Quiz Me',      prompt: (t) => `Create a quiz question (with answer) to help me remember:\n\n"${t}"` },
+  { id: 'quiz',      icon: '🧠', label: 'Quiz Me',      prompt: (t) => `Create a quiz question to help me remember this passage:\n\n"${t}"\n\nWrite your response in this exact format:\n**Question:** <your question here>\n\n**Answer:** <your answer here>` },
   { id: 'summarise', icon: '📋', label: 'Summarise',    prompt: (t) => `Summarise this passage in 2–3 sentences:\n\n"${t}"` },
   { id: 'voice',     icon: '🎤', label: 'Ask by voice', prompt: null },
-  { id: 'note',      icon: '📌', label: 'Save note',    prompt: null },
+  { id: 'note',      icon: '📌', label: 'Note only',    prompt: null, tooltip: 'Saves text as annotation — no review card created' },
 ]
 
 export default function SelectionMenu({ position, text, pageNumber, onAction, onClose }) {
@@ -50,7 +50,8 @@ export default function SelectionMenu({ position, text, pageNumber, onAction, on
 
     // ── Vertical ──────────────────────────────────────────────────────────────
     const spaceAbove = position.y - GAP
-    const flipped = spaceAbove < menuH + MARGIN   // not enough room above → go below
+    // Flip if not enough room above, or if Y is too close to top (e.g. under toolbar)
+    const flipped = spaceAbove < menuH + MARGIN || position.y < 120
 
     if (flipped) {
       el.style.transform = `translate(-50%, ${GAP}px)`
@@ -103,7 +104,7 @@ export default function SelectionMenu({ position, text, pageNumber, onAction, on
           <button
             key={action.id}
             className="sel-menu-btn"
-            title={action.label}
+            title={action.tooltip || action.label}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => fire(action)}
           >
@@ -117,11 +118,11 @@ export default function SelectionMenu({ position, text, pageNumber, onAction, on
           className={`sel-menu-btn sel-menu-btn-index ${hasIndex ? 'has-entries' : 'no-entries'}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => fire({ id: 'view-index', prompt: null })}
-          title={hasIndex ? `View ${qaCount} Q&A${qaCount !== 1 ? 's' : ''} in index` : 'No index entries yet for this passage'}
+          title={hasIndex ? `View ${qaCount} Q&A${qaCount !== 1 ? 's' : ''} in index` : 'Ask a question about this passage, then save it to your index'}
         >
           <span className="sel-menu-btn-icon">{hasIndex ? '📚' : '📭'}</span>
           <span className="sel-menu-btn-label">
-            {hasIndex ? `Index · ${qaCount} Q&A${qaCount !== 1 ? 's' : ''}` : 'Index (empty)'}
+            {hasIndex ? `Index · ${qaCount} Q&A${qaCount !== 1 ? 's' : ''}` : 'Add to Index'}
           </span>
           {hasIndex && <span className="sel-menu-index-badge">{related.length}</span>}
         </button>

@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
     selection_text: str | None = None
     selection_page: int | None = None
     section_title: str | None = None   # ToC section the selection falls under
+    mode: str | None = None            # 'quick' → skip deep-dive layers for short queries
 
 
 class Source(BaseModel):
@@ -78,5 +79,6 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         selection_text=req.selection_text,
         selection_page=req.selection_page,
         section_title=req.section_title,
+        mode=req.mode,
     )
     return result

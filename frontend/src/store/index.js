@@ -66,8 +66,9 @@ export const useAppStore = create((set, get) => ({
       const mergedTexts = existingTexts.includes(highlightText) ? existingTexts : [...existingTexts, highlightText]
 
       try {
-        // Create QA in DB
-        const qa = await postQA(existing.id, { question, answer, source_chunk_ids: sourceChunkIds })
+        // Create QA in DB; pass selection_text so review shows the right source passage
+        // when this QA is merged into an entry with a different primary highlight_text.
+        const qa = await postQA(existing.id, { question, answer, source_chunk_ids: sourceChunkIds, selection_text: highlightText })
         // Patch highlight with merged concepts/texts
         await patchHighlight(existing.id, { concepts: mergedConcepts, highlight_texts: mergedTexts })
         // Update local state
@@ -97,7 +98,7 @@ export const useAppStore = create((set, get) => ({
         concepts: concepts || [],
         note: '',
       })
-      const qa = await postQA(entry.id, { question, answer, source_chunk_ids: sourceChunkIds })
+      const qa = await postQA(entry.id, { question, answer, source_chunk_ids: sourceChunkIds, selection_text: highlightText })
       set((s2) => ({
         highlightIndex: [
           { ...normalizeEntry(entry), pdfTitle, qaPairs: [normalizeQA(qa)] },
@@ -301,7 +302,9 @@ export const useAppStore = create((set, get) => ({
   isLoading: false,
 
   addMessage: (role, content, meta = null) =>
-    set((s) => ({ chatHistory: [...s.chatHistory, { role, content, meta }] })),
+    set((s) => ({ chatHistory: [...s.chatHistory, { role, content, meta, createdAt: new Date().toISOString() }] })),
+
+  clearHistory: () => set({ chatHistory: [], sources: [], webSearchTriggered: false }),
 
   setLastResponse: ({ sources, webSearchTriggered }) =>
     set({ sources, webSearchTriggered }),
@@ -340,7 +343,9 @@ function normalizeQA(row) {
     id:              row.id,
     question:        row.question,
     answer:          row.answer,
+    source_chunk_ids: row.source_chunk_ids || [],
     sourceChunkIds:  row.source_chunk_ids || [],
+    selectionText:   row.selection_text || null,
     starred:         row.starred,
     // FSRS fields (needed by review session — Research B1)
     stability:       row.stability,

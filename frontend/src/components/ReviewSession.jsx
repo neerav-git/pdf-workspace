@@ -10,10 +10,93 @@
  *                       Next-card or finish controls.
  *   Phase 3 "done"    — Session complete. Stats + return button.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { fetchDueCards, submitReview } from '../api/review'
 import './ReviewSession.css'
+
+// ── Text cleaning ─────────────────────────────────────────────────────────────
+
+/**
+ * Remove PDF hyphenation artifacts (word-\nwrap → wordwrap) and normalize
+ * whitespace so the passage reads naturally in the review session.
+ */
+function cleanHighlightText(text) {
+  return text
+    .replace(/-\r?\n/g, '')   // de-hyphenate line breaks: "treat-\nments" → "treatments"
+    .replace(/\s+/g, ' ')     // collapse runs of whitespace/newlines to single space
+    .trim()
+}
+
+// ── Action Q&A detection ──────────────────────────────────────────────────────
+// Mirrors ACTION_MAP in HighlightIndex — kept in sync manually.
+// When "Quiz Me" fires from the hover menu, the raw prompt is stored as qa.question.
+// Claude's actual generated question+answer is in qa.answer.
+// For review, we extract the question portion from qa.answer so the user sees
+// a real question, not a prompt string.
+
+const ACTION_PREFIXES = [
+  { prefix: 'Create a quiz question',   type: 'quiz'      },
+  { prefix: 'Explain this passage',     type: 'explain'   },
+  { prefix: 'Explain this in simple',   type: 'simplify'  },
+  { prefix: 'Identify and define',      type: 'terms'     },
+  { prefix: 'Summarise this passage',   type: 'summarise' },
+]
+
+function detectActionType(question) {
+  for (const a of ACTION_PREFIXES) {
+    if (question?.startsWith(a.prefix)) return a.type
+  }
+  return 'manual'
+}
+
+/**
+ * For Quiz Me Q&As, try to extract the actual question from Claude's answer.
+ * Claude typically formats these as:
+ *   **Question:** <question text>\n\n**Answer:** <answer text>
+ * Returns null if no structured question can be found — caller shows a generic prompt.
+ */
+function extractQuizQuestion(answer) {
+  if (!answer) return null
+  // Markdown bold pattern: **Question:** ... **Answer:**
+  const boldMatch = answer.match(/\*\*[Qq]uestion:\*\*\s*([\s\S]+?)(?:\n\n\*\*[Aa]nswer:|$)/i)
+  if (boldMatch) {
+    const q = boldMatch[1].trim()
+    if (q.length > 5) return q
+  }
+  // Plain pattern: Question: ...
+  const plainMatch = answer.match(/^[Qq]uestion:\s*(.+)/m)
+  if (plainMatch) {
+    const q = plainMatch[1].trim()
+    if (q.length > 5) return q
+  }
+  // Only use the first line as a fallback if it looks like an actual question
+  // (ends with ? or starts with a question word — avoid showing answer text as the question)
+  const firstLine = answer.split('\n').find((l) => l.trim())?.trim()
+  const QUESTION_WORDS = /^(what|who|where|when|why|how|which|describe|explain|name|list)/i
+  if (firstLine && (firstLine.endsWith('?') || QUESTION_WORDS.test(firstLine))) {
+    return firstLine
+  }
+  return null
+}
+
+/**
+ * Returns the display question for a review card.
+ * - Manual Q&A: return question text directly
+ * - Quiz Me: extract question from the answer field
+ * - Other actions (explain, simplify, terms, summarise): return null
+ *   (caller should show a generic recall prompt instead)
+ */
+function resolveDisplayQuestion(card) {
+  const type = detectActionType(card.question)
+  if (type === 'manual') return { question: card.question, isAction: false, actionType: null }
+  if (type === 'quiz') {
+    const extracted = extractQuizQuestion(card.answer)
+    return { question: extracted, isAction: true, actionType: 'quiz' }
+  }
+  // explain / simplify / terms / summarise — no specific question to show
+  return { question: null, isAction: true, actionType: type }
+}
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
 
@@ -45,23 +128,119 @@ function ConfidenceRating({ value, onChange }) {
   return (
     <div className="rv-confidence">
       <span className="rv-confidence-label">Confidence</span>
-      <div className="rv-confidence-options">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            className={`rv-conf-btn ${value === n ? 'rv-conf-btn--active' : ''}`}
-            onClick={() => onChange(n)}
-            title={labels[n]}
-            type="button"
-          >
-            {n}
-          </button>
-        ))}
+      <div className="rv-confidence-scale">
+        <div className="rv-confidence-options">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              className={`rv-conf-btn ${value === n ? 'rv-conf-btn--active' : ''}`}
+              onClick={() => onChange(n)}
+              title={labels[n]}
+              type="button"
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <div className="rv-confidence-endpoints">
+          <span className="rv-conf-endpoint rv-conf-endpoint--hard">Hard</span>
+          <span className="rv-conf-endpoint rv-conf-endpoint--easy">Easy</span>
+        </div>
       </div>
       {value > 0 && (
         <span className="rv-confidence-hint">{labels[value]}</span>
       )}
     </div>
+  )
+}
+
+// ── Review mode toggle ────────────────────────────────────────────────────────
+
+function ReviewModeToggle({ mode, onChange }) {
+  return (
+    <div className="rv-mode-toggle-wrap">
+      <div className="rv-mode-toggle">
+        <button
+          className={`rv-mode-btn ${mode === 'concept' ? 'rv-mode-btn--active' : ''}`}
+          onClick={() => onChange('concept')}
+          type="button"
+        >
+          Concept
+        </button>
+        <button
+          className={`rv-mode-btn ${mode === 'detail' ? 'rv-mode-btn--active' : ''}`}
+          onClick={() => onChange('detail')}
+          type="button"
+        >
+          Detail
+        </button>
+      </div>
+      <span
+        className="rv-mode-info"
+        title="Concept: full passage shown — test your understanding of the idea&#10;Detail: key words hidden — test your recall of specific facts"
+      >
+        ⓘ
+      </span>
+    </div>
+  )
+}
+
+// ── Cloze passage (Detail mode) ───────────────────────────────────────────────
+// Deterministically masks ~30% of content words (length ≥ 4, non-numeric).
+// Every 3rd content word is masked, starting at index 0.
+// Click a masked word to reveal it persistently; click again to re-mask.
+
+function ClozePassage({ text }) {
+  const [revealed, setRevealed] = useState(new Set())
+
+  const tokens = useMemo(() => {
+    const result = []
+    const regex = /(\b[a-zA-Z]\w*\b)|([^a-zA-Z]+)/g
+    let contentIdx = 0
+    let m
+    while ((m = regex.exec(text)) !== null) {
+      if (m[1]) {
+        const word = m[1]
+        const maskable = word.length >= 4
+        const masked = maskable && contentIdx % 3 === 0
+        if (maskable) contentIdx++
+        result.push({ type: 'word', text: word, masked, id: result.length })
+      } else {
+        result.push({ type: 'gap', text: m[2] })
+      }
+    }
+    return result
+  }, [text])
+
+  const toggle = (id) =>
+    setRevealed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+
+  return (
+    <p className="rv-source-text rv-source-text--cloze">
+      {tokens.map((tok, i) => {
+        if (tok.type === 'gap') return tok.text
+        if (!tok.masked) return <span key={i}>{tok.text}</span>
+        const isRevealed = revealed.has(tok.id)
+        return (
+          <span
+            key={i}
+            className={`rv-masked-word${isRevealed ? ' rv-masked-word--revealed' : ''}`}
+            onClick={() => toggle(tok.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggle(tok.id)}
+            title={isRevealed ? 'Click to re-mask' : 'Click to reveal'}
+            aria-label={isRevealed ? tok.text : 'masked word'}
+          >
+            {tok.text}
+          </span>
+        )
+      })}
+    </p>
   )
 }
 
@@ -78,6 +257,8 @@ export default function ReviewSession() {
   const [gradeResult, setGradeResult] = useState(null)
   const [submitting, setSubmitting]   = useState(false)
   const [error, setError]         = useState(null)
+  // null = use card-type default; 'concept' | 'detail' = user override
+  const [reviewMode, setReviewMode] = useState(null)
 
   const cardShownAt = useRef(null)
   const textareaRef = useRef(null)
@@ -149,6 +330,7 @@ export default function ReviewSession() {
       setRecallText('')
       setConfidence(0)
       setGradeResult(null)
+      setReviewMode(null) // reset to card-type default for each new card
       setPhase('recall')
     }
   }, [idx, cards.length])
@@ -226,23 +408,63 @@ export default function ReviewSession() {
 
   if (phase === 'recall') {
     const canSubmit = recallText.trim().length > 0 && confidence > 0 && !submitting
+    const { question: displayQuestion, isAction, actionType } = resolveDisplayQuestion(card)
+
+    // Default mode: quiz cards → detail (cloze), everything else → concept (full)
+    const defaultMode = detectActionType(card.question) === 'quiz' ? 'detail' : 'concept'
+    const effectiveMode = reviewMode ?? defaultMode
+
+    // Action type labels for the badge shown when we can't show a raw question
+    const ACTION_LABELS = {
+      explain: 'Explain', simplify: 'Simplify', terms: 'Key Terms', summarise: 'Summarise',
+    }
+
+    // Action-specific recall prompts (Fix 18)
+    const ACTION_PROMPTS = {
+      explain:   'What does this passage mean in your own words?',
+      simplify:  'Explain this as simply as possible — no jargon.',
+      terms:     'What are the key terms here and what do they mean?',
+      summarise: 'Summarise this passage from memory in 2–3 sentences.',
+    }
+
     return (
       <div className="rv-overlay">
         {renderHeader()}
         <div className="rv-card-wrap" onKeyDown={handleKeyDown}>
-          {/* Source passage context */}
+          {/* Source passage context — show the user's specific selection, not the full chunk.
+              Clean PDF hyphenation artifacts (treat-\nments → treatments) for readability. */}
           {card.highlight_text && (
             <div className="rv-source">
-              <span className="rv-source-label">Source passage</span>
-              <p className="rv-source-text">{card.highlight_text}</p>
+              <div className="rv-source-header">
+                <span className="rv-source-label">Source passage</span>
+                <ReviewModeToggle mode={effectiveMode} onChange={setReviewMode} />
+              </div>
+              {effectiveMode === 'detail'
+                ? <ClozePassage text={cleanHighlightText(card.highlight_text)} />
+                : <p className="rv-source-text">{cleanHighlightText(card.highlight_text)}</p>
+              }
               {card.section_title && (
                 <span className="rv-source-meta">{card.section_title}{card.page_number ? ` · p. ${card.page_number}` : ''}</span>
               )}
             </div>
           )}
 
-          {/* Question */}
-          <div className="rv-question">{card.question}</div>
+          {/* Question — use extracted question for Quiz Me; generic prompt for other actions */}
+          {displayQuestion
+            ? <div className="rv-question">{displayQuestion}</div>
+            : (
+              <div className="rv-question rv-question--action">
+                {isAction && actionType && (
+                  <span className={`rv-action-badge rv-action-${actionType}`}>
+                    {ACTION_LABELS[actionType] || actionType}
+                  </span>
+                )}
+                <span className="rv-question-generic">
+                  {(isAction && actionType && ACTION_PROMPTS[actionType]) || 'What do you recall about this passage?'}
+                </span>
+              </div>
+            )
+          }
 
           {/* Confidence + recall — both submitted together (Research D2) */}
           <ConfidenceRating value={confidence} onChange={setConfidence} />
@@ -262,13 +484,24 @@ export default function ReviewSession() {
 
           {error && <div className="rv-error">{error}</div>}
 
-          <button
-            className={`rv-btn rv-btn--primary rv-submit ${!canSubmit ? 'rv-btn--disabled' : ''}`}
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-          >
-            {submitting ? 'Grading…' : 'Submit'}
-          </button>
+          <div className="rv-submit-row">
+            {!canSubmit && !submitting && (
+              <span className="rv-submit-hint">
+                {confidence === 0 && recallText.trim().length === 0
+                  ? 'Write your answer and set confidence'
+                  : confidence === 0
+                  ? 'Set a confidence rating to submit'
+                  : 'Write your answer to submit'}
+              </span>
+            )}
+            <button
+              className={`rv-btn rv-btn--primary rv-submit ${!canSubmit ? 'rv-btn--disabled' : ''}`}
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+            >
+              {submitting ? 'Grading…' : 'Submit'}
+            </button>
+          </div>
         </div>
       </div>
     )

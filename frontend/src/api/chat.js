@@ -1,6 +1,6 @@
 import client from './client'
 
-export const sendMessage = ({ pdfId, message, history, selectionText, selectionPage, sectionTitle }) =>
+export const sendMessage = ({ pdfId, message, history, selectionText, selectionPage, sectionTitle, mode }) =>
   client
     .post('/chat', {
       pdf_id: pdfId,
@@ -9,6 +9,7 @@ export const sendMessage = ({ pdfId, message, history, selectionText, selectionP
       selection_text: selectionText || null,
       selection_page: selectionPage || null,
       section_title: sectionTitle || null,
+      mode: mode || null,
     })
     .then((r) => r.data)
 

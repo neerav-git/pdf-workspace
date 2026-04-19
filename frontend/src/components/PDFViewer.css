@@ -28,6 +28,12 @@
   font-size: 14px;
 }
 
+.viewer-placeholder-hint {
+  font-size: 12px !important;
+  color: #333;
+  margin-top: 4px;
+}
+
 /* ── Toolbar ── */
 
 .viewer-toolbar {
@@ -280,6 +286,7 @@
 
 .viewer-page-wrapper {
   flex-shrink: 0;
+  position: relative;  /* required: overlay divs are positioned absolute inside this */
 }
 
 .viewer-page-placeholder {
@@ -369,32 +376,29 @@
 }
 .viewer-toc-banner-dismiss:hover { color: #aaa; border-color: #555; }
 
-/* ── Persistent text highlight (CSS Custom Highlight API) ── */
-::highlight(pdf-selection) {
-  background-color: rgba(37, 99, 235, 0.35);
-  color: inherit;
-}
+/* ── Highlight overlays — absolutely-positioned divs inside .viewer-page-wrapper ── */
+/* Created by range.getClientRects() → pixel-exact positions over the canvas.       */
+/* No CSS Custom Highlight API, no span class tricks — just plain divs.             */
 
-/* ── Highlight Lens (CSS Custom Highlight API) ── */
-/* Default: subtle amber — indexed but no curation state */
-::highlight(pdf-lens) {
-  background-color: rgba(251, 191, 36, 0.22);
-  color: inherit;
+/* Default: amber — indexed, no specific curation state */
+.pdf-hl-overlay.pdf-hl-lens {
+  background-color: rgba(251, 191, 36, 0.35);
 }
-/* Flagged: needs attention — warm red */
-::highlight(pdf-lens-flagged) {
-  background-color: rgba(239, 68, 68, 0.22);
-  color: inherit;
+/* Flagged: warm red */
+.pdf-hl-overlay.pdf-hl-lens-flagged {
+  background-color: rgba(239, 68, 68, 0.38);
 }
-/* Anchored: foundational — cool blue */
-::highlight(pdf-lens-anchored) {
-  background-color: rgba(96, 165, 250, 0.25);
-  color: inherit;
+/* Anchored: cool blue */
+.pdf-hl-overlay.pdf-hl-lens-anchored {
+  background-color: rgba(96, 165, 250, 0.38);
 }
-/* Reviewed: done — soft green */
-::highlight(pdf-lens-reviewed) {
-  background-color: rgba(52, 211, 153, 0.2);
-  color: inherit;
+/* Reviewed: soft green */
+.pdf-hl-overlay.pdf-hl-lens-reviewed {
+  background-color: rgba(52, 211, 153, 0.32);
+}
+/* Flash — light blue when navigating from index (visually distinct from amber lens) */
+.pdf-hl-overlay.pdf-hl-flash {
+  background-color: rgba(96, 165, 250, 0.30);
 }
 
 /* Lens toggle button */
@@ -406,8 +410,95 @@
   color: #fbbf24;
 }
 
-/* Flash highlight — navigating to a specific passage from the index */
-::highlight(pdf-flash) {
-  background-color: rgba(251, 191, 36, 0.6);
-  color: inherit;
+/* ── Highlight Popover ───────────────────────────────────────────────────────── */
+/* Appears on click of a lens overlay. Fixed-position, flips to stay in viewport. */
+
+.hl-popover {
+  position: fixed;
+  z-index: 9999;
+  min-width: 220px;
+  max-width: 300px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  visibility: hidden; /* shown after flip calculation */
+}
+
+.hl-popover-excerpt {
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.5;
+  font-style: italic;
+  word-break: break-word;
+}
+
+.hl-popover-section {
+  font-size: 11px;
+  color: #666;
+}
+
+.hl-popover-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hl-popover-qa-count {
+  font-size: 11px;
+  color: #888;
+}
+
+.hl-popover-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.04em;
+}
+
+.hl-badge-flagged  { background: #2a1212; color: #e07070; border: 1px solid #4a2020; }
+.hl-badge-anchored { background: #12182a; color: #7090e0; border: 1px solid #20304a; }
+.hl-badge-starred  { background: #2a2412; color: #d4a840; border: 1px solid #4a3a20; }
+
+.hl-popover-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #242424;
+}
+
+.hl-popover-btn {
+  flex: 1;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  transition: background .12s, color .12s;
+}
+
+.hl-popover-btn--index {
+  background: #1e2a3a;
+  color: #7aace0;
+}
+.hl-popover-btn--index:hover {
+  background: #263852;
+  color: #aad0f8;
+}
+
+.hl-popover-btn--review {
+  background: #1e3a28;
+  color: #6acea8;
+}
+.hl-popover-btn--review:hover {
+  background: #264e36;
+  color: #90efca;
 }

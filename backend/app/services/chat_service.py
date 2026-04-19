@@ -125,6 +125,21 @@ FORMATTING RULES (non-negotiable):
 """
 
 
+# ── Quick mode system prompt ──────────────────────────────────────────────────
+# Used when the user sends a short (< 8 word) conversational query without a
+# text selection. Bypasses the full 5-layer Response Intelligence System so the
+# answer is direct and snappy rather than heavily structured.
+
+RESPONSE_QUICK_SYSTEM = """\
+Answer the user's question directly and concisely.
+- Give the most useful answer in 2–4 sentences or a short list (if a list genuinely helps).
+- Skip preamble, meta-commentary, and follow-up questions entirely.
+- Use markdown only when it genuinely aids clarity (short bullet lists are fine; headers are not).
+- Be accurate and specific. Never pad with "That's a great question" or similar.
+- If the document excerpts provided are not relevant to the question, say so briefly.
+"""
+
+
 # ── Question routing helpers ──────────────────────────────────────────────────
 
 def _is_document_question(message: str) -> bool:
@@ -158,9 +173,9 @@ async def _tavily_search(query: str) -> list[dict]:
 
 # ── System prompt templates ───────────────────────────────────────────────────
 
-def _document_prompt(pdf_title: str, selection_block: str, rag_block: str) -> str:
+def _document_prompt(pdf_title: str, selection_block: str, rag_block: str, ris: str = RESPONSE_INTELLIGENCE_SYSTEM) -> str:
     """Primary path: RAG chunks available (with or without a selection)."""
-    return f"""{RESPONSE_INTELLIGENCE_SYSTEM}
+    return f"""{ris}
 ---
 ROLE: You are a research and learning assistant helping a user deeply understand the document they are studying.
 
@@ -175,9 +190,9 @@ INSTRUCTIONS:
 {selection_block}{rag_block}"""
 
 
-def _selection_only_prompt(pdf_title: str, selection_block: str) -> str:
+def _selection_only_prompt(pdf_title: str, selection_block: str, ris: str = RESPONSE_INTELLIGENCE_SYSTEM) -> str:
     """Fallback when user highlighted a passage but RAG found no supporting chunks."""
-    return f"""{RESPONSE_INTELLIGENCE_SYSTEM}
+    return f"""{ris}
 ---
 ROLE: You are a research and learning assistant helping a user understand a specific highlighted passage from the document they are studying.
 
@@ -192,9 +207,9 @@ INSTRUCTIONS:
 {selection_block}"""
 
 
-def _web_fallback_prompt(pdf_title: str, rag_block: str) -> str:
+def _web_fallback_prompt(pdf_title: str, rag_block: str, ris: str = RESPONSE_INTELLIGENCE_SYSTEM) -> str:
     """Used when RAG found nothing relevant and Tavily web search fired instead."""
-    return f"""{RESPONSE_INTELLIGENCE_SYSTEM}
+    return f"""{ris}
 ---
 ROLE: You are a research assistant. The user is studying "{pdf_title}" and asked a question that could not be answered from the document's contents. The context below comes from a live web search.
 
@@ -217,6 +232,7 @@ async def chat(
     selection_text: str | None = None,
     selection_page: int | None = None,
     section_title: str | None = None,
+    mode: str | None = None,
 ) -> dict:
     # 1. Embed the user's question for RAG
     query_embedding = embed([message])[0]
@@ -255,6 +271,7 @@ async def chat(
 
     no_good_hits = not hits or all(h["distance"] > RELEVANCE_THRESHOLD for h in hits)
     force_document = _is_document_question(message) or bool(selection_text)
+    ris = RESPONSE_QUICK_SYSTEM if mode == "quick" else RESPONSE_INTELLIGENCE_SYSTEM
 
     if no_good_hits and not force_document:
         # Genuine external question — fall back to web
@@ -262,16 +279,16 @@ async def chat(
         enriched_query = f'{pdf_title}: {message}'
         web_results = await _tavily_search(enriched_query)
         rag_block = f"Web search results for «{enriched_query}»:\n{_format_web_context(web_results)}"
-        system_prompt = _web_fallback_prompt(pdf_title, rag_block)
+        system_prompt = _web_fallback_prompt(pdf_title, rag_block, ris=ris)
 
     elif selection_text and no_good_hits:
         # Selection present but RAG found nothing supportive
-        system_prompt = _selection_only_prompt(pdf_title, selection_block)
+        system_prompt = _selection_only_prompt(pdf_title, selection_block, ris=ris)
 
     else:
         # Normal path: answer from document chunks
         rag_block = f"Document excerpts (retrieved by relevance):\n{_format_chunk_context(hits)}"
-        system_prompt = _document_prompt(pdf_title, selection_block, rag_block)
+        system_prompt = _document_prompt(pdf_title, selection_block, rag_block, ris=ris)
 
     # 4. Build message list
     messages = [

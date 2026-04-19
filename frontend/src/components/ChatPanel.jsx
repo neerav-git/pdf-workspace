@@ -8,11 +8,51 @@ import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
 import './ChatPanel.css'
 
+/**
+ * Extend a partial user selection to the nearest sentence boundary using the
+ * full chunk text from ChromaDB.
+ *
+ * Why: Users often release the mouse before completing a sentence, producing
+ * truncated highlight_text like "...consumer gui" instead of "...consumer guides
+ * and encyclopedias." The index and review session should show the complete thought.
+ *
+ * Algorithm:
+ *  1. De-hyphenate both texts (PDF extraction wraps "treat-\nments" → "treatments")
+ *  2. Find the selection's start in the chunk
+ *  3. Walk forward from the selection's end to the nearest sentence terminator (. ! ?)
+ *  4. If the original ends within 120 chars of a sentence end, return the extended text
+ *     (avoid bloating short selections that already capture a full sentence)
+ *  5. Return original if chunk text isn't available or match fails
+ */
+function extendToSentenceBoundary(selectionText, chunkText) {
+  if (!chunkText || !selectionText) return selectionText
+
+  const clean = (t) => t.replace(/-\r?\n/g, '').replace(/\s+/g, ' ').trim()
+  const cleanSel   = clean(selectionText)
+  const cleanChunk = clean(chunkText)
+
+  const startIdx = cleanChunk.indexOf(cleanSel.slice(0, 40))
+  if (startIdx === -1) return selectionText
+
+  const endIdx = startIdx + cleanSel.length
+
+  // Already ends at sentence boundary — don't change
+  if (/[.!?]$/.test(cleanSel)) return cleanSel
+
+  // Look for sentence end within 150 chars after the selection's end
+  const window = cleanChunk.slice(endIdx, endIdx + 150)
+  const match = window.match(/^(.*?[.!?])(?:\s|$)/)
+  if (match) return cleanChunk.slice(startIdx, endIdx + match[1].length)
+
+  return cleanSel
+}
+
 export default function ChatPanel() {
   const {
     selectedPdf,
     chatHistory,
     addMessage,
+    clearHistory,
     setLastResponse,
     isLoading,
     setLoading,
@@ -32,8 +72,36 @@ export default function ChatPanel() {
   const [logPrompt, setLogPrompt] = useState(null) // { question, answer, selectionText, selectionPage }
   const [showNotes, setShowNotes] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [copiedIdx, setCopiedIdx] = useState(null) // index of message whose copy was just clicked
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+
+  // ── Relative timestamp ─────────────────────────────────────────────────────
+  const relativeTime = (iso) => {
+    if (!iso) return ''
+    const diff = Math.floor((Date.now() - new Date(iso)) / 1000)
+    if (diff < 10) return 'just now'
+    if (diff < 60) return `${diff}s ago`
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    return new Date(iso).toLocaleDateString()
+  }
+
+  // ── Copy handler ───────────────────────────────────────────────────────────
+  const handleCopy = (content, idx) => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopiedIdx(idx)
+      setTimeout(() => setCopiedIdx(null), 2000)
+    })
+  }
+
+  // ── Clear history ──────────────────────────────────────────────────────────
+  const handleClear = () => {
+    if (window.confirm('Clear chat history? This cannot be undone.')) {
+      clearHistory()
+      setLogPrompt(null)
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -55,6 +123,9 @@ export default function ChatPanel() {
       addMessage('user', rawText, ctx ? { selectionText: ctx.text, selectionPage: ctx.pageNumber } : null)
       setLoading(true)
 
+      // Short queries without a selection get quick mode (skip 5-layer template)
+      const isQuick = !ctx && rawText.trim().split(/\s+/).length < 8
+
       try {
         const data = await sendMessage({
           pdfId: selectedPdf.id,
@@ -63,6 +134,7 @@ export default function ChatPanel() {
           selectionText: ctx?.text,
           selectionPage: ctx?.pageNumber,
           sectionTitle: ctx?.sectionTitle,
+          mode: isQuick ? 'quick' : null,
         })
         addMessage('assistant', data.answer)
         setLastResponse({ sources: data.sources || [], webSearchTriggered: data.web_search_triggered })
@@ -116,7 +188,7 @@ export default function ChatPanel() {
       deepSectionPath: resolved?.section_path?.length > 0 ? resolved.section_path : null,
       chunkId: resolved?.chunk_id || null,
       concepts,
-      highlightText: logPrompt.selectionText,
+      highlightText: extendToSentenceBoundary(logPrompt.selectionText, resolved?.chunk_text),
       question: logPrompt.question,
       answer: logPrompt.answer,
       sourceChunkIds: resolved?.chunk_id ? [resolved.chunk_id] : [],
@@ -202,8 +274,13 @@ export default function ChatPanel() {
             {pdfIndexCount > 0 && <span className="tab-badge">{pdfIndexCount}</span>}
           </button>
         </div>
-        {activeTab === 'chat' && selectedPdf && (
-          <span className="chat-pdf-name">{selectedPdf.title}</span>
+        {selectedPdf && (
+          <span className="chat-pdf-name" title={selectedPdf.title}>{selectedPdf.title}</span>
+        )}
+        {chatHistory.length > 0 && activeTab === 'chat' && (
+          <button className="chat-clear-btn" onClick={handleClear} title="Clear chat history">
+            Clear
+          </button>
         )}
         {pdfNotes.length > 0 && activeTab === 'chat' && (
           <button className="notes-toggle" onClick={() => setShowNotes((v) => !v)} title="Saved notes">
@@ -253,9 +330,23 @@ export default function ChatPanel() {
                     </span>
                   </div>
                 )}
-                {msg.role === 'assistant'
-                  ? <div className="message-bubble"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
-                  : <div className="message-bubble">{msg.content}</div>}
+                <div className="message-bubble-wrap">
+                  {msg.role === 'assistant'
+                    ? <div className="message-bubble"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                    : <div className="message-bubble">{msg.content}</div>}
+                  {msg.role === 'assistant' && (
+                    <button
+                      className={`message-copy-btn ${copiedIdx === i ? 'copied' : ''}`}
+                      onClick={() => handleCopy(msg.content, i)}
+                      title="Copy response"
+                    >
+                      {copiedIdx === i ? '✓' : '⎘'}
+                    </button>
+                  )}
+                </div>
+                {msg.createdAt && (
+                  <span className={`message-time message-time-${msg.role}`}>{relativeTime(msg.createdAt)}</span>
+                )}
                 {msg.role === 'assistant' && i === chatHistory.length - 1 && sources.length > 0 && (
                   <div className="message-sources">
                     {webSearchTriggered && <span className="source-badge web">🌐 Web search</span>}
@@ -276,22 +367,22 @@ export default function ChatPanel() {
               </div>
             )}
 
-            {/* Log-to-index prompt */}
-            {logPrompt && !isLoading && (
-              <div className="log-prompt">
-                <span className="log-prompt-icon">📚</span>
-                <span className="log-prompt-text">Log this highlight &amp; Q&amp;A to your index?</span>
-                <div className="log-prompt-actions">
-                  <button className="log-prompt-save" onClick={handleSaveToIndex} disabled={isSaving}>
-                    {isSaving ? 'Saving…' : 'Save to Index'}
-                  </button>
-                  <button className="log-prompt-skip" onClick={() => setLogPrompt(null)}>Skip</button>
-                </div>
-              </div>
-            )}
-
             <div ref={bottomRef} />
           </div>
+
+          {/* Log-to-index prompt — outside scroll area so it's always visible */}
+          {logPrompt && !isLoading && (
+            <div className="log-prompt">
+              <span className="log-prompt-icon">📚</span>
+              <span className="log-prompt-text">Log this highlight &amp; Q&amp;A to your index?</span>
+              <div className="log-prompt-actions">
+                <button className="log-prompt-save" onClick={handleSaveToIndex} disabled={isSaving}>
+                  {isSaving ? 'Saving…' : 'Save to Index'}
+                </button>
+                <button className="log-prompt-skip" onClick={() => setLogPrompt(null)}>Skip</button>
+              </div>
+            </div>
+          )}
 
           {/* Selection context chip */}
           {selectionContext && (
