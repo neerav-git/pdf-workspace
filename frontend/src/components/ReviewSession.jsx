@@ -347,7 +347,10 @@ export default function ReviewSession() {
 
   const renderHeader = () => (
     <div className="rv-header">
-      <span className="rv-brand">Review Session</span>
+      <div className="rv-header-title">
+        <span className="rv-brand">Review Session</span>
+        <span className="rv-scope-label">{getReviewScopeLabel(reviewScope, cards)}</span>
+      </div>
       {cards.length > 0 && phase !== 'done' && phase !== 'empty' && (
         <span className="rv-progress">
           {idx + 1} / {cards.length}
@@ -376,8 +379,10 @@ export default function ReviewSession() {
           <div className="rv-empty-icon">✓</div>
           <div className="rv-empty-title">Nothing due right now</div>
           <div className="rv-muted" style={{ marginTop: 8 }}>
-            {reviewScope?.pdfId
-              ? 'All cards for this document are up to date.'
+            {reviewScope?.cards
+              ? 'This card is not ready for review right now.'
+              : reviewScope?.pdfId
+              ? 'No cards from this PDF are due right now.'
               : 'All your cards are up to date. Come back later.'}
           </div>
           <button className="rv-btn rv-btn--primary" style={{ marginTop: 32 }} onClick={closeReview}>
@@ -396,7 +401,7 @@ export default function ReviewSession() {
           <div className="rv-empty-icon">🎉</div>
           <div className="rv-empty-title">Session complete</div>
           <div className="rv-muted" style={{ marginTop: 8 }}>
-            Reviewed {cards.length} card{cards.length !== 1 ? 's' : ''}.
+            Reviewed {cards.length} card{cards.length !== 1 ? 's' : ''} from {getReviewScopeSummary(reviewScope, cards)}.
           </div>
           <button className="rv-btn rv-btn--primary" style={{ marginTop: 32 }} onClick={closeReview}>
             Back to reading
@@ -606,4 +611,22 @@ function formatDue(dueDateStr) {
   if (diffDay === 1) return 'tomorrow'
   if (diffDay <= 30) return `in ${diffDay} days`
   return due.toLocaleDateString()
+}
+
+function getReviewScopeLabel(reviewScope, cards) {
+  if (reviewScope?.cards) {
+    if ((cards?.length || 0) === 1) return 'Single Card Review'
+    return 'Selected Cards Review'
+  }
+  if (reviewScope?.pdfId) return 'Due Cards for This PDF'
+  return 'Global Due Review'
+}
+
+function getReviewScopeSummary(reviewScope, cards) {
+  if (reviewScope?.cards) {
+    if ((cards?.length || 0) === 1) return 'this card'
+    return 'these selected cards'
+  }
+  if (reviewScope?.pdfId) return 'this PDF'
+  return 'all PDFs'
 }

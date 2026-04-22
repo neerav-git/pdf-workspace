@@ -66,8 +66,11 @@ else
   source "$CONDA_BASE/etc/profile.d/conda.sh"
   conda activate "$CONDA_ENV"
   cd "$ROOT/backend"
+  info "Applying Alembic migrations…"
+  alembic upgrade head >> "$LOGS/backend.log" 2>&1 || \
+    warn "Alembic upgrade returned non-zero — backend will still start (lifespan self-repairs schema)."
   uvicorn app.main:app --reload --port 8000 \
-    > "$LOGS/backend.log" 2>&1 &
+    >> "$LOGS/backend.log" 2>&1 &
   echo $! > "$LOGS/backend.pid"
   sleep 3
   if port_in_use 8000; then

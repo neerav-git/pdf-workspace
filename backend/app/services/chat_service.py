@@ -314,6 +314,8 @@ async def chat(
                 "page_number": h["page_number"],
                 "chunk_index": h["chunk_index"],
                 "distance": round(h["distance"], 4),
+                "chunk_id": h.get("chunk_id"),
+                "text": h.get("text"),
             }
             for h in hits
         ],
@@ -344,22 +346,40 @@ _SYNTHESIS_SYSTEM = """\
 You are a learning synthesis assistant.
 
 Given a highlighted passage from a document and the Q&A exchanges a learner had about it, \
-write a 2–3 sentence synthesis of what they now understand.
+write a compact synthesis of what they now understand.
 
 Rules:
-- Identify the core insight that survives when you strip away the individual question angles \
-and look at what the exchanges collectively establish.
+- Treat the ANSWERS as the primary evidence of what was established during the chat.
+- Preserve the main mechanisms, distinctions, and implications that appear in the answers; \
+do not collapse them into a vague paraphrase.
 - Do NOT enumerate or list the Q&As. Fuse them into a single unified understanding.
 - Write declaratively about the understanding itself: state what is known, not what was asked.
 - If the learner's own note is provided, treat it as the strongest signal of their understanding \
 and anchor the synthesis to it.
 - If the Q&As reveal a gap — a key aspect of the passage left unexamined — name it in one \
 sentence at the end: "What remains unexplored: ..."
-- Maximum 3 sentences. Plain prose. No markdown, no bullet points, no headers.
+- For summary mode: 2–3 sentences maximum.
+- Plain prose. No markdown, no bullet points, no headers.
+"""
+
+_SYNTHESIS_DEEP_SYSTEM = """\
+You are a learning synthesis assistant.
+
+Given a highlighted passage from a document and the Q&A exchanges a learner had about it, \
+write a deeper synthesis of what the learner now understands from the chat.
+
+Rules:
+- Use the ANSWERS as the main evidence of what the learner covered.
+- Preserve the deeper structure of the explanation: central claim, mechanism, implications, and transferable insight.
+- Do not merely shorten the answer. Reorganize it into a coherent study note.
+- If the learner's own note is provided, integrate it as the strongest signal of understanding.
+- If the Q&As reveal a gap, end with one sentence beginning: "What remains unexplored: ..."
+- 4–6 sentences maximum.
+- Plain prose only. No markdown, no bullet points, no headers.
 """
 
 
-def synthesize_entry(highlight_text: str, qa_pairs: list[dict], user_note: str = "") -> str:
+def synthesize_entry(highlight_text: str, qa_pairs: list[dict], user_note: str = "", mode: str = "summary") -> str:
     """
     Distil all Q&A exchanges about a passage into a 2–3 sentence synthesis of
     what the learner now understands.  Uses Haiku for speed and low cost.
@@ -368,7 +388,7 @@ def synthesize_entry(highlight_text: str, qa_pairs: list[dict], user_note: str =
     client = _get_anthropic()
 
     qa_text = "\n\n".join(
-        f"Q: {q.get('question', '')[:250]}\nA: {q.get('answer', '')[:600]}"
+        f"Q: {q.get('question', '')[:300]}\nA: {q.get('answer', '')[:2200]}"
         for q in qa_pairs
     )
     user_content = f"Passage:\n{highlight_text[:500]}\n\nQ&A exchanges:\n{qa_text}"
@@ -378,8 +398,8 @@ def synthesize_entry(highlight_text: str, qa_pairs: list[dict], user_note: str =
     try:
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=220,
-            system=_SYNTHESIS_SYSTEM,
+            max_tokens=500 if mode == "deep" else 260,
+            system=_SYNTHESIS_DEEP_SYSTEM if mode == "deep" else _SYNTHESIS_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
         )
         return msg.content[0].text.strip()
@@ -400,6 +420,22 @@ Rules:
 - Avoid overly specific names; prefer the underlying concept.
 - Examples: ["doppler effect", "ultrasound imaging"], \
 ["gallstone formation", "bile chemistry"], ["spaced repetition", "memory decay"]
+"""
+
+_STUDY_CARD_QUESTION_SYSTEM = """\
+You convert a chat exchange into a clear study question for a saved review card.
+
+Rules:
+- Output only the final question text.
+- If the user's original question is already a clear, self-contained study question, keep it with only light cleanup.
+- If the original question is vague, context-dependent, conversational, or too weak for later review, rewrite it into a standalone question.
+- Ground the question in what the answer actually established.
+- Prefer a question that tests understanding, mechanism, or evidence rather than generic phrasing.
+- Keep it concise: usually 8–22 words.
+- Do not mention "chat", "assistant", or "response".
+- Never refuse, explain limitations, ask for more information, or output a fallback note.
+- Never output bullets, multiple lines, or commentary.
+- If context is limited, still write the best single-line standalone study question you can infer from the answer and source text.
 """
 
 
@@ -433,3 +469,34 @@ def extract_concepts(highlight_text: str, answer: str) -> list[str]:
         return [t.strip().lower() for t in tags if t.strip()][:4]
     except Exception:
         return []
+
+
+def prepare_study_card_question(question: str, answer: str, source_text: str = "") -> str:
+    """
+    Rewrite raw chat questions into clearer standalone study questions when needed.
+    Falls back to the original question on any error.
+    """
+    client = _get_anthropic()
+    user_text = (
+        f"Original question: {question[:300]}\n\n"
+        f"Answer: {answer[:1600]}"
+    )
+    if source_text.strip():
+        user_text += f"\n\nSource passage: {source_text[:800]}"
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+            system=_STUDY_CARD_QUESTION_SYSTEM,
+            messages=[{"role": "user", "content": user_text}],
+        )
+        rewritten = msg.content[0].text.strip().splitlines()[0].strip()
+        rewritten = re.sub(r"\s+", " ", rewritten)
+        bad_markers = ("i cannot", "i can't", "i would need", "lacks sufficient context", "to create a useful")
+        if not rewritten or any(marker in rewritten.lower() for marker in bad_markers):
+            return question
+        if not rewritten.endswith("?"):
+            rewritten = f"{rewritten.rstrip('.!')}?"
+        return rewritten or question
+    except Exception:
+        return question

@@ -38,7 +38,7 @@
   color: #666;
   padding: 4px 6px 8px;
   border-bottom: 1px solid #2e2e2e;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   font-style: italic;
   line-height: 1.4;
   white-space: nowrap;
@@ -46,7 +46,33 @@
   text-overflow: ellipsis;
 }
 
+.sel-menu-context {
+  font-size: 10px;
+  color: #7a7a7a;
+  padding: 0 6px 8px;
+}
+
 .sel-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sel-menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sel-menu-group-title {
+  font-size: 10px;
+  color: #7a7a7a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 4px;
+}
+
+.sel-menu-group-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
@@ -70,20 +96,44 @@
 .sel-menu-btn-icon { font-size: 15px; flex-shrink: 0; line-height: 1; }
 .sel-menu-btn-label { font-size: 12px; color: #d4d4d4; white-space: nowrap; }
 
-/* Voice accent */
-.sel-menu-btn:nth-child(6) { border-color: #2563eb22; }
-.sel-menu-btn:nth-child(6):hover { background: #1e2a3a; border-color: #2563eb; }
-.sel-menu-btn:nth-child(6) .sel-menu-btn-label { color: #60a5fa; }
+.sel-menu-btn-ask[title="Ask by Voice"],
+.sel-menu-btn-ask[title="Ask by Voice"]:hover {
+  border-color: #2563eb22;
+}
+.sel-menu-btn-ask[title="Ask by Voice"]:hover {
+  background: #1e2a3a;
+  border-color: #2563eb;
+}
+.sel-menu-btn-ask[title="Ask by Voice"] .sel-menu-btn-label {
+  color: #60a5fa;
+}
+
+.sel-menu-btn-practice {
+  border-color: #14532d55;
+  background: #102016;
+}
+.sel-menu-btn-practice:hover {
+  background: #152b1d;
+  border-color: #22c55e88;
+}
+.sel-menu-btn-practice .sel-menu-btn-label {
+  color: #86efac;
+}
 
 /* Save note accent */
-.sel-menu-btn:nth-child(7) { border-color: #d9770622; }
-.sel-menu-btn:nth-child(7):hover { background: #2a1e0e; border-color: #d97706; }
-.sel-menu-btn:nth-child(7) .sel-menu-btn-label { color: #fbbf24; }
+.sel-menu-btn-save {
+  border-color: #d9770622;
+}
+.sel-menu-btn-save:hover {
+  background: #2a1e0e;
+  border-color: #d97706;
+}
+.sel-menu-btn-save .sel-menu-btn-label {
+  color: #fbbf24;
+}
 
 /* Index button — spans full width */
 .sel-menu-btn-index {
-  grid-column: 1 / -1;
-  margin-top: 2px;
   position: relative;
 }
 

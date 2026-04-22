@@ -45,11 +45,12 @@ export const resolveChunk = (pdfId, highlightText, pageNumber) =>
  * qaPairs: [{ question, answer }, ...]
  * Returns { synthesis: "..." }
  */
-export const synthesizeEntry = (highlightText, qaPairs, userNote = '') =>
+export const synthesizeEntry = (highlightText, qaPairs, userNote = '', mode = 'summary') =>
   client
     .post('/chat/synthesize-entry', {
       highlight_text: highlightText,
       qa_pairs: qaPairs,
       user_note: userNote,
+      mode,
     })
     .then((r) => r.data)

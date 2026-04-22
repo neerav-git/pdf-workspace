@@ -16,6 +16,11 @@ from app.core.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Lightweight schema evolution — kept as belt-and-braces even after Alembic
+    # migrations land, so fresh checkouts still self-repair on boot.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS original_question TEXT"))
+        conn.execute(text("ALTER TABLE highlight_entries ADD COLUMN IF NOT EXISTS deep_synthesis TEXT"))
     # Seed default rubric + prompt versions for grading (Research B4, C4)
     from app.services.grading_service import ensure_default_rubric_version
     db = SessionLocal()

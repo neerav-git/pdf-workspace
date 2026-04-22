@@ -164,58 +164,6 @@
 .note-item:hover .note-delete { opacity: 1; }
 .note-delete:hover { color: #f87171; }
 
-/* Log-to-index prompt — rendered outside scroll area, always visible above input */
-.log-prompt {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: #1a1f10;
-  border-top: 1px solid #3a4a1a;
-  border-bottom: 1px solid #3a4a1a;
-  flex-shrink: 0;
-}
-
-.log-prompt-icon { font-size: 16px; flex-shrink: 0; }
-
-.log-prompt-text {
-  flex: 1;
-  font-size: 12px;
-  color: #a3c45a;
-  min-width: 140px;
-}
-
-.log-prompt-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.log-prompt-save {
-  background: #2d4a10;
-  border: 1px solid #4a7a1a;
-  color: #a3c45a;
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.log-prompt-save:hover { background: #3a6015; }
-
-.log-prompt-skip {
-  background: none;
-  border: 1px solid #333;
-  color: #555;
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: border-color 0.1s, color 0.1s;
-}
-.log-prompt-skip:hover { border-color: #555; color: #888; }
-
 /* Selection context chip */
 .selection-chip {
   display: flex;
@@ -470,6 +418,41 @@
   flex-wrap: wrap;
   gap: 4px;
   padding: 0 4px;
+}
+
+.message-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.message-log-btn {
+  background: #1d2c14;
+  border: 1px solid #3c5a22;
+  border-radius: 999px;
+  color: #a7d16d;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 10px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+}
+
+.message-log-btn:hover:enabled {
+  background: #27401a;
+  border-color: #5f8c2d;
+  color: #d3f09a;
+}
+
+.message-log-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.message-log-btn.saved {
+  background: #132317;
+  border-color: #245a33;
+  color: #74d08d;
 }
 
 .source-badge {

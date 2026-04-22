@@ -23,6 +23,7 @@ class HighlightEntry(Base):
     concepts          = Column(JSONB, default=list)       # string[] from Haiku
     note              = Column(Text, default="")
     synthesis         = Column(Text)                      # null until generated on demand
+    deep_synthesis    = Column(Text)                      # null until user clicks "Dive deeper"
     starred           = Column(Boolean, default=False)
     flagged           = Column(Boolean, default=False)
     anchored          = Column(Boolean, default=False)
@@ -38,6 +39,7 @@ class QAPair(Base):
     id               = Column(Integer, primary_key=True, index=True)
     highlight_id     = Column(Integer, ForeignKey("highlight_entries.id", ondelete="CASCADE"), nullable=False, index=True)
     question         = Column(Text, nullable=False)
+    original_question = Column(Text)
     answer           = Column(Text, nullable=False)
     source_chunk_ids = Column(JSONB, default=list)   # ChromaDB IDs; resolve at review time
     selection_text   = Column(Text)                  # the specific text selected when this QA was created

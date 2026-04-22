@@ -16,6 +16,7 @@ class QAPairResponse(BaseModel):
     id: int
     highlight_id: int
     question: str
+    original_question: Optional[str]
     answer: str
     source_chunk_ids: list
     selection_text: Optional[str]
@@ -45,6 +46,7 @@ class HighlightResponse(BaseModel):
     concepts: list
     note: str
     synthesis: Optional[str]
+    deep_synthesis: Optional[str]
     starred: bool
     flagged: bool
     anchored: bool
@@ -70,6 +72,7 @@ class HighlightCreate(BaseModel):
 class HighlightPatch(BaseModel):
     note: Optional[str] = None
     synthesis: Optional[str] = None
+    deep_synthesis: Optional[str] = None
     starred: Optional[bool] = None
     flagged: Optional[bool] = None
     anchored: Optional[bool] = None
@@ -81,6 +84,7 @@ class HighlightPatch(BaseModel):
 
 class QAPairCreate(BaseModel):
     question: str
+    original_question: Optional[str] = None
     answer: str
     source_chunk_ids: list = []
     selection_text: Optional[str] = None

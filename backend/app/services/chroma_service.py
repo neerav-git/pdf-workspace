@@ -67,6 +67,7 @@ def query_chunks(
                 "page_number": meta.get("page_number"),
                 "chunk_index": meta.get("chunk_index"),
                 "distance": dist,
+                "chunk_id": f"pdf_{pdf_id}_chunk_{meta.get('chunk_index')}",
             }
         )
     return hits

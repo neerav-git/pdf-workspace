@@ -4,16 +4,22 @@ import { findRelatedEntries } from '../utils/indexMatch'
 import './SelectionMenu.css'
 
 const ACTIONS = [
-  { id: 'explain',    icon: '❓', label: 'Explain',      prompt: (t) => `Explain this passage in detail:\n\n"${t}"` },
-  { id: 'simplify',  icon: '✨', label: 'Simplify',     prompt: (t) => `Explain this in simple, plain language:\n\n"${t}"` },
-  { id: 'terms',     icon: '📖', label: 'Key Terms',    prompt: (t) => `Identify and define the key terms and concepts in:\n\n"${t}"` },
-  { id: 'quiz',      icon: '🧠', label: 'Quiz Me',      prompt: (t) => `Create a quiz question to help me remember this passage:\n\n"${t}"\n\nWrite your response in this exact format:\n**Question:** <your question here>\n\n**Answer:** <your answer here>` },
-  { id: 'summarise', icon: '📋', label: 'Summarise',    prompt: (t) => `Summarise this passage in 2–3 sentences:\n\n"${t}"` },
-  { id: 'voice',     icon: '🎤', label: 'Ask by voice', prompt: null },
-  { id: 'note',      icon: '📌', label: 'Note only',    prompt: null, tooltip: 'Saves text as annotation — no review card created' },
+  { id: 'explain', group: 'ask', icon: '❓', label: 'Explain', prompt: (t) => `Explain this passage in detail:\n\n"${t}"` },
+  { id: 'simplify', group: 'ask', icon: '✨', label: 'Simplify', prompt: (t) => `Explain this in simple, plain language:\n\n"${t}"` },
+  { id: 'terms', group: 'ask', icon: '📖', label: 'Key Terms', prompt: (t) => `Identify and define the key terms and concepts in:\n\n"${t}"` },
+  { id: 'summarise', group: 'ask', icon: '📋', label: 'Summarise', prompt: (t) => `Summarise this passage in 2–3 sentences:\n\n"${t}"` },
+  { id: 'voice', group: 'ask', icon: '🎤', label: 'Ask by Voice', prompt: null },
+  { id: 'quiz', group: 'practice', icon: '🧠', label: 'Quiz Me', prompt: (t) => `Create a quiz question to help me remember this passage:\n\n"${t}"\n\nWrite your response in this exact format:\n**Question:** <your question here>\n\n**Answer:** <your answer here>` },
+  { id: 'note', group: 'save', icon: '📌', label: 'Save Note', prompt: null, tooltip: 'Saves text as an annotation only — no study card created' },
 ]
 
-export default function SelectionMenu({ position, text, pageNumber, onAction, onClose }) {
+const ACTION_GROUPS = [
+  { id: 'ask', label: 'Ask Now' },
+  { id: 'practice', label: 'Practice Now' },
+  { id: 'save', label: 'Save Only' },
+]
+
+export default function SelectionMenu({ position, text, pageNumber, sectionTitle, sectionPath, onAction, onClose }) {
   const ref = useRef(null)
   const { highlightIndex, selectedPdf } = useAppStore()
 
@@ -90,7 +96,14 @@ export default function SelectionMenu({ position, text, pageNumber, onAction, on
   const preview = text.length > 60 ? text.slice(0, 60).trimEnd() + '…' : text
 
   const fire = (action) => {
-    onAction({ id: action.id, prompt: action.prompt ? action.prompt(text) : null, text, pageNumber })
+    onAction({
+      id: action.id,
+      prompt: action.prompt ? action.prompt(text) : null,
+      text,
+      pageNumber,
+      sectionTitle: sectionTitle || null,
+      sectionPath: sectionPath || [],
+    })
     onClose()
   }
 
@@ -98,34 +111,43 @@ export default function SelectionMenu({ position, text, pageNumber, onAction, on
     <div className="sel-menu" ref={ref} style={style}>
       <div className="sel-menu-arrow" />
       <div className="sel-menu-preview" title={text}>"{preview}"</div>
+      {sectionTitle && <div className="sel-menu-context">{sectionTitle} · p.{pageNumber}</div>}
 
       <div className="sel-menu-actions">
-        {ACTIONS.map((action) => (
-          <button
-            key={action.id}
-            className="sel-menu-btn"
-            title={action.tooltip || action.label}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => fire(action)}
-          >
-            <span className="sel-menu-btn-icon">{action.icon}</span>
-            <span className="sel-menu-btn-label">{action.label}</span>
-          </button>
-        ))}
+        {ACTION_GROUPS.map((group) => (
+          <div key={group.id} className="sel-menu-group">
+            <div className="sel-menu-group-title">{group.label}</div>
+            <div className="sel-menu-group-buttons">
+              {ACTIONS.filter((action) => action.group === group.id).map((action) => (
+                <button
+                  key={action.id}
+                  className={`sel-menu-btn sel-menu-btn-${action.group}`}
+                  title={action.tooltip || action.label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => fire(action)}
+                >
+                  <span className="sel-menu-btn-icon">{action.icon}</span>
+                  <span className="sel-menu-btn-label">{action.label}</span>
+                </button>
+              ))}
 
-        {/* Index button — full width, state-aware */}
-        <button
-          className={`sel-menu-btn sel-menu-btn-index ${hasIndex ? 'has-entries' : 'no-entries'}`}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => fire({ id: 'view-index', prompt: null })}
-          title={hasIndex ? `View ${qaCount} Q&A${qaCount !== 1 ? 's' : ''} in index` : 'Ask a question about this passage, then save it to your index'}
-        >
-          <span className="sel-menu-btn-icon">{hasIndex ? '📚' : '📭'}</span>
-          <span className="sel-menu-btn-label">
-            {hasIndex ? `Index · ${qaCount} Q&A${qaCount !== 1 ? 's' : ''}` : 'Add to Index'}
-          </span>
-          {hasIndex && <span className="sel-menu-index-badge">{related.length}</span>}
-        </button>
+              {group.id === 'save' && (
+                <button
+                  className={`sel-menu-btn sel-menu-btn-index ${hasIndex ? 'has-entries' : 'no-entries'}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => fire({ id: 'view-index', prompt: null })}
+                  title={hasIndex ? `Open ${qaCount} study card${qaCount !== 1 ? 's' : ''} in the index` : 'Open the index for this PDF'}
+                >
+                  <span className="sel-menu-btn-icon">{hasIndex ? '📚' : '🗂️'}</span>
+                  <span className="sel-menu-btn-label">
+                    {hasIndex ? `Open ${qaCount} Study Card${qaCount !== 1 ? 's' : ''}` : 'Open Index'}
+                  </span>
+                  {hasIndex && <span className="sel-menu-index-badge">{related.length}</span>}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

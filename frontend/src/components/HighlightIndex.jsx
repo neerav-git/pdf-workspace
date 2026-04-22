@@ -40,6 +40,138 @@ function getQuestionDisplay(question) {
   return { label: clean, type: 'manual', isAction: false }
 }
 
+function normalizeQuestionText(text) {
+  return (text || '').replace(/\s+/g, ' ').trim().replace(/[?.!]+$/, '').toLowerCase()
+}
+
+function isMeaningfulSectionTitle(title) {
+  if (!title) return false
+  const clean = title.replace(/\s+/g, ' ').trim()
+  if (!clean) return false
+  if (/^arxiv:/i.test(clean)) return false
+  if (/^\[?[a-z]{2}\.[A-Z]{2}\]?/i.test(clean)) return false
+  if (/^T\d/i.test(clean)) return false
+  if (/^fig\.?\s*\d+/i.test(clean)) return false
+  if (/^table\s*\d+/i.test(clean)) return false
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) return false
+  if (/\b\d{1,2}\s+[A-Z][a-z]{2}\s+\d{4}\b/.test(clean)) return false
+  if (clean.length > 90) return false
+  return true
+}
+
+function normalizeSectionPath(entry) {
+  const deepPath = (entry.deepSectionPath || []).filter((node) => isMeaningfulSectionTitle(node?.title))
+  const sectionPath = (entry.sectionPath || []).filter((node) => isMeaningfulSectionTitle(node?.title))
+
+  if (deepPath.length > 0) return deepPath
+  if (sectionPath.length > 0) return sectionPath
+
+  if (isMeaningfulSectionTitle(entry.sectionTitle)) {
+    return [{ level: 1, title: entry.sectionTitle }]
+  }
+
+  return []
+}
+
+function getEntrySectionLabel(entry) {
+  const path = normalizeSectionPath(entry)
+  return path.length > 0 ? path[path.length - 1].title : null
+}
+
+function getEntrySectionContext(entry) {
+  const path = normalizeSectionPath(entry)
+  if (path.length <= 1) return null
+  return path.map((p) => p.title).join(' → ')
+}
+
+function extractQuizQuestion(answer) {
+  if (!answer) return null
+  const boldMatch = answer.match(/\*\*[Qq]uestion:\*\*\s*([\s\S]+?)(?:\n\n\*\*[Aa]nswer:|$)/i)
+  if (boldMatch) {
+    const q = boldMatch[1].trim()
+    if (q.length > 5) return q
+  }
+  const plainMatch = answer.match(/^[Qq]uestion:\s*(.+)/m)
+  if (plainMatch) {
+    const q = plainMatch[1].trim()
+    if (q.length > 5) return q
+  }
+  return null
+}
+
+function getLearningCardLabel(qa, entry) {
+  const { label, type, isAction } = getQuestionDisplay(qa.question)
+  const section = getEntrySectionLabel(entry)
+  const sectionContext = getEntrySectionContext(entry)
+  const sectionText = sectionContext || section
+
+  if (type === 'quiz') {
+    return {
+      title: extractQuizQuestion(qa.answer) || 'Practice recall',
+      subtitle: sectionText ? `Retrieval practice · ${sectionText}` : 'Retrieval practice',
+      type,
+      isAction: true,
+    }
+  }
+
+  if (!isAction) {
+    const originalQuestion = qa.originalQuestion?.trim() || null
+    const hasReframedOriginal =
+      originalQuestion && normalizeQuestionText(originalQuestion) !== normalizeQuestionText(label)
+
+    return {
+      title: hasReframedOriginal ? originalQuestion : label,
+      subtitle: sectionText ? `Study question · ${sectionText}` : 'Study question',
+      derivedQuestion: hasReframedOriginal ? label : null,
+      type: 'manual',
+      isAction: false,
+    }
+  }
+
+  const titles = {
+    explain: 'What this passage means',
+    simplify: 'Plain-language takeaway',
+    terms: 'Key terms to remember',
+    summarise: 'Main takeaway',
+  }
+
+  const subtitles = {
+    explain: sectionText ? `Build understanding · ${sectionText}` : 'Build understanding',
+    simplify: sectionText ? `Simplify the idea · ${sectionText}` : 'Simplify the idea',
+    terms: sectionText ? `Vocabulary and concepts · ${sectionText}` : 'Vocabulary and concepts',
+    summarise: sectionText ? `High-level summary · ${sectionText}` : 'High-level summary',
+  }
+
+  return {
+    title: titles[type] || label,
+    subtitle: subtitles[type] || (section ? `Study card · ${section}` : 'Study card'),
+    type,
+    isAction: true,
+  }
+}
+
+function getEntryFocusLabel(entry) {
+  if (!entry.qaPairs?.length) return null
+  const primary = [...entry.qaPairs].sort((a, b) => {
+    if (b.starred !== a.starred) return Number(b.starred) - Number(a.starred)
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  })[0]
+  return getLearningCardLabel(primary, entry)
+}
+
+function getDueStatus(entry) {
+  const now = Date.now()
+  const qas = entry.qaPairs || []
+  const due = qas.filter((qa) => qa.dueAt && new Date(qa.dueAt).getTime() <= now && qa.state !== 'suspended')
+  const learning = qas.filter((qa) => qa.state === 'learning' || qa.state === 'relearning')
+  const fresh = qas.filter((qa) => qa.state === 'new')
+
+  if (due.length > 0) return { tone: 'due', label: due.length === 1 ? '1 due now' : `${due.length} due now` }
+  if (learning.length > 0) return { tone: 'learning', label: learning.length === 1 ? '1 in learning' : `${learning.length} in learning` }
+  if (fresh.length > 0) return { tone: 'new', label: fresh.length === 1 ? '1 new card' : `${fresh.length} new cards` }
+  return { tone: 'reviewed', label: qas.length === 1 ? '1 reviewed card' : `${qas.length} reviewed cards` }
+}
+
 // ── Concept helpers ───────────────────────────────────────────────────────────
 
 /**
@@ -84,17 +216,13 @@ function groupByHierarchy(entries) {
   const h1Map = {}   // h1Title → { h1Title, minPage, subsections: { h2Key → {h2Title, minPage, entries[]} } }
 
   for (const entry of entries) {
-    // deepSectionPath comes from font analysis (body-level subheadings);
-    // sectionPath is the coarser TOC-level path. Prefer the deeper one.
-    const path = (entry.deepSectionPath && entry.deepSectionPath.length > 0)
-      ? entry.deepSectionPath
-      : (entry.sectionPath || [])
+    const path = normalizeSectionPath(entry)
     const h1Node = path.find((p) => p.level === 1)
     // Use L2 when present; fall back to L3 for PDFs where subheadings are bold
     // body-size text (no distinct L2 font tier) — e.g. "Description", "Precautions"
     const h2Node = path.find((p) => p.level === 2) || path.find((p) => p.level === 3)
 
-    const h1Key = h1Node?.title || '— Uncategorized —'
+    const h1Key = h1Node?.title || 'Other Passages'
     const h2Key = h2Node?.title || null
 
     if (!h1Map[h1Key]) {
@@ -163,7 +291,7 @@ function relativeTime(isoString) {
 
 // ── SynthesisDisplay — collapsible synthesis block ───────────────────────────
 
-function SynthesisDisplay({ entry, runSynthesis }) {
+function SynthesisDisplay({ entry, runSynthesis, runDeepSynthesis, clearDeepSynthesis, deepSynthesis, deepLoading }) {
   const [collapsed, setCollapsed] = useState(false)
   return (
     <div className="idx-synthesis-wrap" onClick={(e) => e.stopPropagation()}>
@@ -191,6 +319,35 @@ function SynthesisDisplay({ entry, runSynthesis }) {
         </div>
         {!collapsed && <p className="idx-synthesis-text">{entry.synthesis}</p>}
       </div>
+      <div className="idx-synthesis-deep-actions">
+        {!deepSynthesis && (
+          <button
+            className="idx-synthesis-deep-btn"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => { e.stopPropagation(); runDeepSynthesis() }}
+            disabled={deepLoading}
+            title="Expand this into a deeper study synthesis"
+          >
+            {deepLoading ? 'Building deep dive…' : 'Dive deeper'}
+          </button>
+        )}
+        {deepSynthesis && (
+          <button
+            className="idx-synthesis-deep-btn idx-synthesis-deep-btn--secondary"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => { e.stopPropagation(); clearDeepSynthesis() }}
+            title="Hide deep synthesis"
+          >
+            Hide deep dive
+          </button>
+        )}
+      </div>
+      {deepSynthesis && (
+        <div className="idx-synthesis-deep-block">
+          <div className="idx-synthesis-deep-label">Deep synthesis</div>
+          <p className="idx-synthesis-deep-text">{deepSynthesis}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -207,15 +364,16 @@ export default function HighlightIndex() {
     deleteIndexEntry, deleteIndexQA,
     setEntryNote,
     setSynthesis,
+    setDeepSynthesis,
     openReview,
   } = useAppStore()
 
-  // ── Review stats (due count for review bar badge) ───────────────────────────
-  const [dueCount, setDueCount] = useState(null)
+  // ── Review stats (global due count for review bar badge) ───────────────────
+  const [globalDueCount, setGlobalDueCount] = useState(null)
   useEffect(() => {
     if (!selectedPdf?.id) return
     fetchReviewStats()
-      .then((s) => setDueCount(s.due_now))
+      .then((s) => setGlobalDueCount(s.due_now))
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPdf?.id, highlightIndex.length])
@@ -228,6 +386,7 @@ export default function HighlightIndex() {
   const [expandedQAs, setExpandedQAs]       = useState({})    // qaId → bool
   const [editingNote, setEditingNote]       = useState({})    // entryId → bool
   const [synthesizing, setSynthesizing]     = useState({})    // entryId → bool
+  const [deepSynthesizing, setDeepSynthesizing] = useState({}) // entryId → bool
   const [expandedChips, setExpandedChips]   = useState({})    // entryId → bool (show all chips)
   const [chipBarExpanded, setChipBarExpanded] = useState(false) // Concepts tab chip bar
   const [relatedMap, setRelatedMap]         = useState({})    // entryId → related[] | 'loading' | 'done'
@@ -247,18 +406,27 @@ export default function HighlightIndex() {
   // Resolve indexFocus scroll
   useEffect(() => {
     if (!indexFocus || !pdfEntries.length) return
-    const related = findRelatedEntries(pdfEntries, indexFocus.text, indexFocus.pageNumber)
+    const focusedById = indexFocus.entryId
+      ? pdfEntries.find((entry) => entry.id === indexFocus.entryId)
+      : null
+    const related = focusedById
+      ? [focusedById]
+      : findRelatedEntries(pdfEntries, indexFocus.text, indexFocus.pageNumber)
+
     if (related.length > 0) {
       const id = related[0].id
       setFocusedEntryId(id)
       setOpenEntries((prev) => ({ ...prev, [id]: true }))
+      if (indexFocus.qaId) {
+        setExpandedQAs((prev) => ({ ...prev, [indexFocus.qaId]: true }))
+      }
       setView('page')
       setTimeout(() => {
         entryRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 50)
     }
     clearIndexFocus()
-  }, [indexFocus])
+  }, [indexFocus, pdfEntries.length])
 
   // Lazy-load related passages for an entry the first time it's expanded
   const loadRelated = useCallback((entry) => {
@@ -295,6 +463,10 @@ export default function HighlightIndex() {
   const totalAnchored  = pdfEntries.filter((e) => e.anchored).length
   const totalFlagged   = pdfEntries.filter((e) => e.flagged).length
   const totalCurated   = totalStarred + totalAnchored + totalFlagged
+  const pdfDueCount    = pdfEntries.reduce(
+    (n, entry) => n + entry.qaPairs.filter((qa) => qa.dueAt && new Date(qa.dueAt).getTime() <= Date.now() && qa.state !== 'suspended').length,
+    0,
+  )
   const pages          = groupByPage(pdfEntries)
   const hierarchy      = groupByHierarchy(pdfEntries)
   const conceptGroups  = groupByConcept(pdfEntries)
@@ -433,14 +605,14 @@ export default function HighlightIndex() {
 
   // ── QA card renderer (shared between all views) ──────────────────────────
 
-  function QACard({ qa, entryId, isFocused }) {
-    const { label, type, isAction } = getQuestionDisplay(qa.question)
+  function QACard({ qa, entryId, entry, isFocused }) {
+    const { title, subtitle, type, isAction, derivedQuestion } = getLearningCardLabel(qa, entry)
     const isExpanded = !!expandedQAs[qa.id]
     const [reviewLoading, setReviewLoading] = useState(false)
 
     // Manual question display: truncate in header; show full text above answer when expanded
-    const shortQuestion = !isAction && label.length > 82 ? label.slice(0, 80) + '…' : label
-    const questionTruncated = !isAction && label.length > 82
+    const shortQuestion = title.length > 82 ? title.slice(0, 80) + '…' : title
+    const questionTruncated = title.length > 82
 
     async function handleReviewThis(e) {
       e.stopPropagation()
@@ -477,10 +649,15 @@ export default function HighlightIndex() {
           </button>
 
           <div className="idx-qa-label">
-            {isAction
-              ? <span className={`idx-action-badge idx-action-${type}`}>{label}</span>
-              : <span className="idx-qa-q-text">{shortQuestion}</span>
-            }
+            <div className="idx-qa-label-stack">
+              <span className="idx-qa-q-text">{shortQuestion}</span>
+              <span className={`idx-qa-context idx-qa-context-${type}`}>{subtitle}</span>
+              {derivedQuestion && (
+                <span className="idx-qa-derived-question" title={derivedQuestion}>
+                  Saved as: {derivedQuestion}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Inline answer preview — first complete sentence, collapsed only */}
@@ -499,7 +676,7 @@ export default function HighlightIndex() {
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleReviewThis}
             title="Review this card now"
-          >{reviewLoading ? '…' : '▶'}</button>
+          >{reviewLoading ? '…' : 'Review Card'}</button>
 
           <button
             className="idx-del"
@@ -514,7 +691,11 @@ export default function HighlightIndex() {
           <div className="idx-qa-answer-wrap">
             {/* For truncated manual questions, show full question text above the answer */}
             {questionTruncated && (
-              <p className="idx-qa-full-question">{label}</p>
+              <p className="idx-qa-full-question">{title}</p>
+            )}
+            {isAction && <p className="idx-qa-full-subtitle">{subtitle}</p>}
+            {derivedQuestion && (
+              <p className="idx-qa-derived-full">Saved as study question: {derivedQuestion}</p>
             )}
             <div className="idx-qa-a idx-qa-a-markdown">
               <ReactMarkdown>{qa.answer}</ReactMarkdown>
@@ -611,37 +792,58 @@ export default function HighlightIndex() {
     if (entry.qaPairs.length === 0) return null
 
     const isLoading = !!synthesizing[entry.id]
+    const isDeepLoading = !!deepSynthesizing[entry.id]
+    const deepSynthesis = entry.deepSynthesis || null
 
-    async function runSynthesis() {
-      setSynthesizing((p) => ({ ...p, [entry.id]: true }))
+    async function runSynthesis(mode = 'summary') {
+      const setLoading = mode === 'deep' ? setDeepSynthesizing : setSynthesizing
+      setLoading((p) => ({ ...p, [entry.id]: true }))
       try {
         const pairs = entry.qaPairs.map((q) => ({ question: q.question, answer: q.answer }))
         const { synthesis } = await synthesizeEntry(
           entry.highlightText,
           pairs,
           entry.note || '',
+          mode,
         )
-        setSynthesis(entry.id, synthesis)
+        if (mode === 'deep') {
+          await setDeepSynthesis(entry.id, synthesis)
+        } else {
+          await setSynthesis(entry.id, synthesis)
+        }
       } catch {
         // silently fail — button remains available to retry
       } finally {
-        setSynthesizing((p) => ({ ...p, [entry.id]: false }))
+        setLoading((p) => ({ ...p, [entry.id]: false }))
       }
     }
 
-    if (isLoading) {
+    function clearDeepSynthesis() {
+      setDeepSynthesis(entry.id, '')
+    }
+
+    if (isLoading || isDeepLoading) {
       return (
         <div className="idx-synthesis-wrap">
           <div className="idx-synthesis-loading">
             <span className="idx-synthesis-spinner" />
-            Synthesizing…
+            {isDeepLoading ? 'Building deep synthesis…' : 'Synthesizing…'}
           </div>
         </div>
       )
     }
 
     if (entry.synthesis) {
-      return <SynthesisDisplay entry={entry} runSynthesis={runSynthesis} />
+      return (
+        <SynthesisDisplay
+          entry={entry}
+          runSynthesis={() => runSynthesis('summary')}
+          runDeepSynthesis={() => runSynthesis('deep')}
+          clearDeepSynthesis={clearDeepSynthesis}
+          deepSynthesis={deepSynthesis}
+          deepLoading={isDeepLoading}
+        />
+      )
     }
 
     return (
@@ -649,7 +851,7 @@ export default function HighlightIndex() {
         <button
           className="idx-synthesis-trigger"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => { e.stopPropagation(); runSynthesis() }}
+          onClick={(e) => { e.stopPropagation(); runSynthesis('summary') }}
           title={`Synthesize learning from ${entry.qaPairs.length} Q&A${entry.qaPairs.length !== 1 ? 's' : ''}`}
         >
           ✦ Synthesize learning
@@ -668,6 +870,8 @@ export default function HighlightIndex() {
         <span>{pdfEntries.length} passage{pdfEntries.length !== 1 ? 's' : ''}</span>
         <span className="idx-stats-sep">·</span>
         <span>{totalQA} Q&amp;A{totalQA !== 1 ? 's' : ''}</span>
+        <span className="idx-stats-sep">·</span>
+        <span className="idx-stats-due">{pdfDueCount} due in this PDF</span>
         {totalConcepts > 0 && <>
           <span className="idx-stats-sep">·</span>
           <span className="idx-stats-concept">{totalConcepts} concept{totalConcepts !== 1 ? 's' : ''}</span>
@@ -687,10 +891,8 @@ export default function HighlightIndex() {
             onClick={() => openReview(selectedPdf ? { pdfId: selectedPdf.id } : null)}
             title="Start spaced-repetition review for this document"
           >
-            ▶ Review
-            {dueCount != null && dueCount > 0 && (
-              <span className="idx-review-due-badge">{dueCount}</span>
-            )}
+            Review This PDF
+            <span className="idx-review-due-badge">{pdfDueCount} due</span>
           </button>
           <button
             className="idx-review-btn idx-review-btn--secondary"
@@ -698,7 +900,10 @@ export default function HighlightIndex() {
             onClick={() => openReview(null)}
             title="Review all due cards across all documents"
           >
-            All due
+            Review All Due
+            {globalDueCount != null && (
+              <span className="idx-review-due-badge idx-review-due-badge--global">{globalDueCount}</span>
+            )}
           </button>
         </div>
       )}
@@ -760,6 +965,10 @@ export default function HighlightIndex() {
                 const isOpen   = openEntries[entry.id] !== false
                 const isFocused = entry.id === focusedEntryId
                 const qaCount  = entry.qaPairs.length
+                const sectionLabel = getEntrySectionLabel(entry)
+                const sectionContext = getEntrySectionContext(entry)
+                const focusLabel = getEntryFocusLabel(entry)
+                const dueStatus = getDueStatus(entry)
 
                 return (
                   <div
@@ -782,6 +991,27 @@ export default function HighlightIndex() {
                       </button>
 
                       <div className="idx-entry-text-wrap">
+                        <div className="idx-entry-section-row">
+                          <button
+                            className="idx-page-num small"
+                            title={`Jump to page ${entry.pageNumber}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={(e) => { e.stopPropagation(); requestNav(entry.pageNumber) }}
+                          >
+                            p.{entry.pageNumber}
+                          </button>
+                          {sectionLabel && <span className="idx-entry-section-label">{sectionLabel}</span>}
+                          <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
+                        </div>
+                        {sectionContext && (
+                          <div className="idx-entry-section-context">{sectionContext}</div>
+                        )}
+                        {focusLabel && (
+                          <div className="idx-entry-focus">
+                            <span className="idx-entry-focus-title">{focusLabel.title}</span>
+                            <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
+                          </div>
+                        )}
                         {/* One button per distinct selection — click to jump + flash highlight */}
                         {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
                           <button
@@ -835,12 +1065,13 @@ export default function HighlightIndex() {
                             <li className="idx-qa-empty">No Q&amp;As saved yet.</li>
                           )}
                           {[...entry.qaPairs]
-                            .sort((a, b) => b.starred - a.starred)
+                            .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
                             .map((qa) => (
                               <QACard
                                 key={qa.id}
                                 qa={qa}
                                 entryId={entry.id}
+                                entry={entry}
                                 isFocused={false}
                               />
                             ))
@@ -899,6 +1130,10 @@ export default function HighlightIndex() {
                         const isOpen    = openEntries[entry.id] !== false
                         const isFocused = entry.id === focusedEntryId
                         const qaCount   = entry.qaPairs.length
+                        const sectionLabel = getEntrySectionLabel(entry)
+                        const sectionContext = getEntrySectionContext(entry)
+                        const dueStatus = getDueStatus(entry)
+                        const focusLabel = getEntryFocusLabel(entry)
 
                         return (
                           <div
@@ -928,7 +1163,18 @@ export default function HighlightIndex() {
                                   >
                                     p.{entry.pageNumber}
                                   </button>
+                                  {sectionLabel && <span className="idx-entry-section-label">{sectionLabel}</span>}
+                                  <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
                                 </div>
+                                {sectionContext && (
+                                  <div className="idx-entry-section-context">{sectionContext}</div>
+                                )}
+                                {focusLabel && (
+                                  <div className="idx-entry-focus">
+                                    <span className="idx-entry-focus-title">{focusLabel.title}</span>
+                                    <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
+                                  </div>
+                                )}
                                 <span className="idx-entry-source-label">Highlight</span>
                                 {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
                                   <button
@@ -980,9 +1226,9 @@ export default function HighlightIndex() {
                                     <li className="idx-qa-empty">No Q&amp;As saved yet.</li>
                                   )}
                                   {[...entry.qaPairs]
-                                    .sort((a, b) => b.starred - a.starred)
+                                    .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
                                     .map((qa) => (
-                                      <QACard key={qa.id} qa={qa} entryId={entry.id} isFocused={false} />
+                                      <QACard key={qa.id} qa={qa} entryId={entry.id} entry={entry} isFocused={false} />
                                     ))
                                   }
                                 </ul>
@@ -1083,6 +1329,10 @@ export default function HighlightIndex() {
                       const isOpen    = openEntries[entry.id] !== false
                       const isFocused = entry.id === focusedEntryId
                       const qaCount   = entry.qaPairs.length
+                      const sectionLabel = getEntrySectionLabel(entry)
+                      const sectionContext = getEntrySectionContext(entry)
+                      const dueStatus = getDueStatus(entry)
+                      const focusLabel = getEntryFocusLabel(entry)
 
                       return (
                         <div
@@ -1102,20 +1352,30 @@ export default function HighlightIndex() {
                               {entry.starred ? '★' : '☆'}
                             </button>
 
-                            <div className="idx-entry-text-wrap">
-                              <div className="idx-entry-section-row">
-                                <button
+                              <div className="idx-entry-text-wrap">
+                                <div className="idx-entry-section-row">
+                                  <button
                                   className="idx-page-num small"
                                   onMouseDown={(e) => e.preventDefault()}
                                   onClick={(e) => { e.stopPropagation(); requestNav(entry.pageNumber) }}
                                   title={`Jump to page ${entry.pageNumber}`}
-                                >
-                                  p.{entry.pageNumber}
-                                </button>
-                                {entry.sectionTitle && (
-                                  <span className="idx-entry-section-label">{entry.sectionTitle}</span>
+                                  >
+                                    p.{entry.pageNumber}
+                                  </button>
+                                {sectionLabel && (
+                                  <span className="idx-entry-section-label">{sectionLabel}</span>
                                 )}
+                                <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
                               </div>
+                              {sectionContext && (
+                                <div className="idx-entry-section-context">{sectionContext}</div>
+                              )}
+                              {focusLabel && (
+                                <div className="idx-entry-focus">
+                                  <span className="idx-entry-focus-title">{focusLabel.title}</span>
+                                  <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
+                                </div>
+                              )}
                               {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
                                 <button
                                   key={ti}
@@ -1157,9 +1417,9 @@ export default function HighlightIndex() {
                               <SynthesisSection entry={entry} />
                               <ul className="idx-qa-list">
                                 {[...entry.qaPairs]
-                                  .sort((a, b) => b.starred - a.starred)
+                                  .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
                                   .map((qa) => (
-                                    <QACard key={qa.id} qa={qa} entryId={entry.id} isFocused={false} />
+                                  <QACard key={qa.id} qa={qa} entryId={entry.id} entry={entry} isFocused={false} />
                                   ))
                                 }
                               </ul>
@@ -1211,10 +1471,10 @@ export default function HighlightIndex() {
               </div>
             ) : (
               starredQAs.map((qa) => {
-                const { label, type, isAction } = getQuestionDisplay(qa.question)
+                const { title, subtitle, type, isAction } = getLearningCardLabel(qa, qa.entry)
                 const isExpanded = !!expandedQAs[qa.id]
-                const shortQuestion = !isAction && label.length > 82 ? label.slice(0, 80) + '…' : label
-                const questionTruncated = !isAction && label.length > 82
+                const shortQuestion = title.length > 82 ? title.slice(0, 80) + '…' : title
+                const questionTruncated = title.length > 82
 
                 return (
                   <div key={qa.id} className="idx-starred-item">
@@ -1240,10 +1500,10 @@ export default function HighlightIndex() {
                       >
                         <span className="idx-star on">★</span>
                         <div className="idx-qa-label">
-                          {isAction
-                            ? <span className={`idx-action-badge idx-action-${type}`}>{label}</span>
-                            : <span className="idx-qa-q-text">{shortQuestion}</span>
-                          }
+                          <div className="idx-qa-label-stack">
+                            <span className="idx-qa-q-text">{shortQuestion}</span>
+                            <span className={`idx-qa-context idx-qa-context-${type}`}>{subtitle}</span>
+                          </div>
                         </div>
                         {!isExpanded && (
                           <span className="idx-qa-inline-preview" title={qa.answer}>
@@ -1257,7 +1517,8 @@ export default function HighlightIndex() {
 
                       {isExpanded && (
                       <div className="idx-qa-answer-wrap">
-                        {questionTruncated && <p className="idx-qa-full-question">{label}</p>}
+                        {questionTruncated && <p className="idx-qa-full-question">{title}</p>}
+                        {isAction && <p className="idx-qa-full-subtitle">{subtitle}</p>}
                         <div className="idx-qa-a idx-qa-a-markdown"><ReactMarkdown>{qa.answer}</ReactMarkdown></div>
                         <button
                           className="idx-expand-btn"

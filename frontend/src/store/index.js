@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import {
   fetchHighlights,
   postHighlight,
@@ -9,7 +10,7 @@ import {
   deleteQA,
 } from '../api/highlights'
 
-export const useAppStore = create((set, get) => ({
+export const useAppStore = create(persist((set, get) => ({
   // PDF library
   pdfs: [],
   selectedPdf: null,
@@ -18,7 +19,18 @@ export const useAppStore = create((set, get) => ({
 
   // Hydrate highlights from DB when a PDF is selected (Research F1: Postgres is source of truth)
   selectPdf: async (pdf) => {
-    set({ selectedPdf: pdf, highlightIndex: [], chatHistory: [], sources: [], selectionContext: null })
+    const prevSelected = get().selectedPdf
+    const prevHistory = get().chatHistory
+    set((s) => ({
+      selectedPdf: pdf,
+      highlightIndex: [],
+      chatHistory: pdf?.id ? (s.chatHistoriesByPdf[pdf.id] || []) : [],
+      chatHistoriesByPdf: prevSelected?.id
+        ? { ...s.chatHistoriesByPdf, [prevSelected.id]: prevHistory }
+        : s.chatHistoriesByPdf,
+      sources: [],
+      selectionContext: null,
+    }))
     if (!pdf?.id) return
     try {
       const entries = await fetchHighlights(pdf.id)
@@ -39,6 +51,7 @@ export const useAppStore = create((set, get) => ({
   selectionContext: null,
   setSelectionContext: (ctx) => set({ selectionContext: ctx }),
   clearSelectionContext: () => set({ selectionContext: null }),
+  pendingSelectionAction: null,
 
   // Saved quick notes (📌 pin)
   notes: [],
@@ -53,7 +66,7 @@ export const useAppStore = create((set, get) => ({
   // All writes: POST/PATCH/DELETE to API first → update local state with DB-returned IDs
   highlightIndex: [],
 
-  saveToIndex: async ({ pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath, deepSectionPath, chunkId, concepts, highlightText, question, answer, sourceChunkIds = [] }) => {
+  saveToIndex: async ({ pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath, deepSectionPath, chunkId, concepts, highlightText, question, originalQuestion = null, answer, sourceChunkIds = [] }) => {
     const s = get()
     const existing = chunkId
       ? s.highlightIndex.find((e) => e.pdfId === pdfId && e.chunkId === chunkId)
@@ -68,7 +81,13 @@ export const useAppStore = create((set, get) => ({
       try {
         // Create QA in DB; pass selection_text so review shows the right source passage
         // when this QA is merged into an entry with a different primary highlight_text.
-        const qa = await postQA(existing.id, { question, answer, source_chunk_ids: sourceChunkIds, selection_text: highlightText })
+        const qa = await postQA(existing.id, {
+          question,
+          original_question: originalQuestion,
+          answer,
+          source_chunk_ids: sourceChunkIds,
+          selection_text: highlightText,
+        })
         // Patch highlight with merged concepts/texts
         await patchHighlight(existing.id, { concepts: mergedConcepts, highlight_texts: mergedTexts })
         // Update local state
@@ -79,6 +98,7 @@ export const useAppStore = create((set, get) => ({
               : e,
           ),
         }))
+        return { entryId: existing.id, qaId: qa.id }
       } catch (e) {
         console.error('saveToIndex (merge) failed:', e)
       }
@@ -98,13 +118,20 @@ export const useAppStore = create((set, get) => ({
         concepts: concepts || [],
         note: '',
       })
-      const qa = await postQA(entry.id, { question, answer, source_chunk_ids: sourceChunkIds, selection_text: highlightText })
+      const qa = await postQA(entry.id, {
+        question,
+        original_question: originalQuestion,
+        answer,
+        source_chunk_ids: sourceChunkIds,
+        selection_text: highlightText,
+      })
       set((s2) => ({
         highlightIndex: [
           { ...normalizeEntry(entry), pdfTitle, qaPairs: [normalizeQA(qa)] },
           ...s2.highlightIndex,
         ],
       }))
+      return { entryId: entry.id, qaId: qa.id }
     } catch (e) {
       console.error('saveToIndex (new) failed:', e)
     }
@@ -245,6 +272,19 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  setDeepSynthesis: async (entryId, text) => {
+    set((s) => ({
+      highlightIndex: s.highlightIndex.map((e) =>
+        e.id === entryId ? { ...e, deepSynthesis: text || null } : e,
+      ),
+    }))
+    try {
+      await patchHighlight(entryId, { deep_synthesis: text || '' })
+    } catch (e) {
+      console.error('setDeepSynthesis failed:', e)
+    }
+  },
+
   deleteIndexEntry: async (entryId) => {
     const prev = get().highlightIndex
     set((s) => ({ highlightIndex: s.highlightIndex.filter((e) => e.id !== entryId) }))
@@ -296,20 +336,51 @@ export const useAppStore = create((set, get) => ({
   closeReview: () => set({ reviewMode: false, reviewScope: null }),
 
   // Chat
+  chatHistoriesByPdf: {},
   chatHistory: [],
   sources: [],
   webSearchTriggered: false,
   isLoading: false,
 
   addMessage: (role, content, meta = null) =>
-    set((s) => ({ chatHistory: [...s.chatHistory, { role, content, meta, createdAt: new Date().toISOString() }] })),
+    set((s) => ({
+      ...(() => {
+        const message = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role,
+          content,
+          meta,
+          createdAt: new Date().toISOString(),
+        }
+        const nextHistory = [...s.chatHistory, message]
+        return {
+          chatHistory: nextHistory,
+          chatHistoriesByPdf: s.selectedPdf?.id
+            ? { ...s.chatHistoriesByPdf, [s.selectedPdf.id]: nextHistory }
+            : s.chatHistoriesByPdf,
+        }
+      })(),
+    })),
 
-  clearHistory: () => set({ chatHistory: [], sources: [], webSearchTriggered: false }),
+  clearHistory: () =>
+    set((s) => ({
+      chatHistory: [],
+      chatHistoriesByPdf: s.selectedPdf?.id
+        ? { ...s.chatHistoriesByPdf, [s.selectedPdf.id]: [] }
+        : s.chatHistoriesByPdf,
+      sources: [],
+      webSearchTriggered: false,
+    })),
 
   setLastResponse: ({ sources, webSearchTriggered }) =>
     set({ sources, webSearchTriggered }),
 
   setLoading: (v) => set({ isLoading: v }),
+}), {
+  name: 'pdf-workspace-chat',
+  storage: createJSONStorage(() => localStorage),
+  version: 1,
+  partialize: (state) => ({ chatHistoriesByPdf: state.chatHistoriesByPdf }),
 }))
 
 // ── Normalizers — map DB snake_case to UI camelCase ───────────────────────────
@@ -334,6 +405,7 @@ function normalizeEntry(row, pdfTitle = null) {
     reviewed:         row.reviewed,
     note:             row.note || '',
     synthesis:        row.synthesis || null,
+    deepSynthesis:    row.deep_synthesis || null,
     qaPairs:          (row.qa_pairs || []).map(normalizeQA),
   }
 }
@@ -342,6 +414,7 @@ function normalizeQA(row) {
   return {
     id:              row.id,
     question:        row.question,
+    originalQuestion: row.original_question || null,
     answer:          row.answer,
     source_chunk_ids: row.source_chunk_ids || [],
     sourceChunkIds:  row.source_chunk_ids || [],

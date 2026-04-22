@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../store'
 import { sendMessage } from '../api/chat'
 import { resolveChunk } from '../api/pdfs'
-import { extractConcepts } from '../api/chat'
+import { extractConcepts, prepareStudyCardQuestion } from '../api/chat'
 import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
 import './ChatPanel.css'
@@ -56,8 +56,6 @@ export default function ChatPanel() {
     setLastResponse,
     isLoading,
     setLoading,
-    sources,
-    webSearchTriggered,
     setCurrentPage,
     selectionContext,
     clearSelectionContext,
@@ -69,12 +67,18 @@ export default function ChatPanel() {
 
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState('chat') // 'chat' | 'index'
-  const [logPrompt, setLogPrompt] = useState(null) // { question, answer, selectionText, selectionPage }
   const [showNotes, setShowNotes] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
+  const [savingMessageId, setSavingMessageId] = useState(null)
+  const [savedMessageIds, setSavedMessageIds] = useState({})
   const [copiedIdx, setCopiedIdx] = useState(null) // index of message whose copy was just clicked
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+
+  const buildChatInsightAnchor = (source) => {
+    if (!source?.text) return ''
+    const clean = source.text.replace(/-\r?\n/g, '').replace(/\s+/g, ' ').trim()
+    return clean.length <= 520 ? clean : `${clean.slice(0, 520).trimEnd()}…`
+  }
 
   // ── Relative timestamp ─────────────────────────────────────────────────────
   const relativeTime = (iso) => {
@@ -99,13 +103,44 @@ export default function ChatPanel() {
   const handleClear = () => {
     if (window.confirm('Clear chat history? This cannot be undone.')) {
       clearHistory()
-      setLogPrompt(null)
+      setSavedMessageIds({})
     }
   }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatHistory, isLoading, logPrompt])
+  }, [chatHistory, isLoading])
+
+  const buildSaveCandidate = useCallback((question, answer, ctx, data) => {
+    if (data.web_search_triggered) return null
+    const availableSources = data.sources || []
+    if (!ctx && availableSources.length === 0) return null
+
+    if (ctx) {
+      return {
+        kind: 'selection',
+        question,
+        answer,
+        selectionText: ctx.text,
+        selectionPage: ctx.pageNumber,
+        sectionTitle: ctx.sectionTitle,
+        sectionPath: ctx.sectionPath,
+        sourceCandidates: availableSources,
+      }
+    }
+
+    const primarySource = availableSources[0]
+    return {
+      kind: 'chat',
+      question,
+      answer,
+      selectionText: buildChatInsightAnchor(primarySource),
+      selectionPage: primarySource?.page_number || null,
+      sectionTitle: null,
+      sectionPath: [],
+      sourceCandidates: availableSources,
+    }
+  }, [])
 
   // ── send ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +153,6 @@ export default function ChatPanel() {
 
       setInput('')
       clearSelectionContext()
-      setLogPrompt(null)
 
       addMessage('user', rawText, ctx ? { selectionText: ctx.text, selectionPage: ctx.pageNumber } : null)
       setLoading(true)
@@ -136,20 +170,14 @@ export default function ChatPanel() {
           sectionTitle: ctx?.sectionTitle,
           mode: isQuick ? 'quick' : null,
         })
-        addMessage('assistant', data.answer)
+        const saveCandidate = buildSaveCandidate(rawText, data.answer, ctx, data)
+        addMessage('assistant', data.answer, {
+          sources: data.sources || [],
+          webSearchTriggered: data.web_search_triggered,
+          rawQuestion: rawText,
+          saveCandidate,
+        })
         setLastResponse({ sources: data.sources || [], webSearchTriggered: data.web_search_triggered })
-
-        // Prompt to log if the question was about a highlight
-        if (ctx) {
-          setLogPrompt({
-            question: rawText,
-            answer: data.answer,
-            selectionText: ctx.text,
-            selectionPage: ctx.pageNumber,
-            sectionTitle: ctx.sectionTitle,
-            sectionPath: ctx.sectionPath,
-          })
-        }
       } catch (err) {
         addMessage('assistant', `Error: ${err.response?.data?.detail || err.message}`)
       } finally {
@@ -166,36 +194,63 @@ export default function ChatPanel() {
 
   // ── index save ────────────────────────────────────────────────────────────
 
-  const handleSaveToIndex = async () => {
-    if (!logPrompt || !selectedPdf || isSaving) return
-    setIsSaving(true)
+  const handleSaveToIndex = async (candidate, messageId) => {
+    if (!candidate || !selectedPdf || savingMessageId) return
+    setSavingMessageId(messageId)
+    try {
+      let resolved = null
+      const primarySource = candidate.sourceCandidates?.[0] || null
 
-    // Fire chunk resolution and concept extraction in parallel.
-    // Both are non-fatal — save proceeds with whatever succeeds.
-    const [resolved, concepts] = await Promise.all([
-      resolveChunk(selectedPdf.id, logPrompt.selectionText, logPrompt.selectionPage)
-        .catch(() => null),
-      extractConcepts(logPrompt.selectionText, logPrompt.answer)
-        .catch(() => []),
-    ])
+      if (candidate.kind === 'selection' && candidate.selectionText && candidate.selectionPage) {
+        resolved = await resolveChunk(selectedPdf.id, candidate.selectionText, candidate.selectionPage)
+          .catch(() => null)
+      }
 
-    saveToIndex({
-      pdfId: selectedPdf.id,
-      pdfTitle: selectedPdf.title,
-      pageNumber: logPrompt.selectionPage,
-      sectionTitle: logPrompt.sectionTitle,
-      sectionPath: logPrompt.sectionPath,
-      deepSectionPath: resolved?.section_path?.length > 0 ? resolved.section_path : null,
-      chunkId: resolved?.chunk_id || null,
-      concepts,
-      highlightText: extendToSentenceBoundary(logPrompt.selectionText, resolved?.chunk_text),
-      question: logPrompt.question,
-      answer: logPrompt.answer,
-      sourceChunkIds: resolved?.chunk_id ? [resolved.chunk_id] : [],
-    })
-    setIsSaving(false)
-    setLogPrompt(null)
-    setActiveTab('index')
+      const conceptSeed = candidate.selectionText || primarySource?.text || candidate.question
+      const concepts = await extractConcepts(conceptSeed, candidate.answer).catch(() => [])
+
+      const highlightText = candidate.kind === 'selection'
+        ? extendToSentenceBoundary(candidate.selectionText, resolved?.chunk_text)
+        : (primarySource?.text ? buildChatInsightAnchor(primarySource) : `Chat insight: ${candidate.question}`)
+
+      const prepared = await prepareStudyCardQuestion(
+        candidate.question,
+        candidate.answer,
+        highlightText || primarySource?.text || '',
+      ).catch(() => ({ question: candidate.question }))
+
+      const saved = await saveToIndex({
+        pdfId: selectedPdf.id,
+        pdfTitle: selectedPdf.title,
+        pageNumber: candidate.selectionPage || primarySource?.page_number || null,
+        sectionTitle: candidate.sectionTitle,
+        sectionPath: candidate.sectionPath,
+        deepSectionPath: resolved?.section_path?.length > 0 ? resolved.section_path : null,
+        chunkId: resolved?.chunk_id || primarySource?.chunk_id || null,
+        concepts,
+        highlightText,
+        question: prepared.question || candidate.question,
+        originalQuestion: prepared.question && prepared.question !== candidate.question ? candidate.question : null,
+        answer: candidate.answer,
+        sourceChunkIds: candidate.kind === 'selection'
+          ? (resolved?.chunk_id ? [resolved.chunk_id] : [])
+          : (candidate.sourceCandidates || []).map((s) => s.chunk_id).filter(Boolean),
+      })
+      setSavedMessageIds((prev) => ({ ...prev, [messageId]: true }))
+      if (saved?.entryId) {
+        useAppStore.setState({
+          indexFocus: {
+            entryId: saved.entryId,
+            qaId: saved.qaId || null,
+            text: highlightText,
+            pageNumber: candidate.selectionPage || primarySource?.page_number || null,
+          },
+        })
+      }
+      setActiveTab('index')
+    } finally {
+      setSavingMessageId(null)
+    }
   }
 
   // ── selection action handler ───────────────────────────────────────────────
@@ -207,9 +262,15 @@ export default function ChatPanel() {
       useAppStore.setState({ pendingSelectionAction: null })
 
       if (action.id === 'note') {
-        const ctx = state.selectionContext
-        if (ctx && selectedPdf) {
-          addNote({ pdfId: selectedPdf.id, pdfTitle: selectedPdf.title, pageNumber: ctx.pageNumber, highlight: ctx.text, note: '', createdAt: new Date().toISOString() })
+        if (selectedPdf) {
+          addNote({
+            pdfId: selectedPdf.id,
+            pdfTitle: selectedPdf.title,
+            pageNumber: action.pageNumber,
+            highlight: action.text,
+            note: '',
+            createdAt: new Date().toISOString(),
+          })
           clearSelectionContext()
         }
         return
@@ -321,7 +382,7 @@ export default function ChatPanel() {
             )}
 
             {chatHistory.map((msg, i) => (
-              <div key={i} className={`message message-${msg.role}`}>
+              <div key={msg.id || i} className={`message message-${msg.role}`}>
                 {msg.meta?.selectionText && (
                   <div className="message-selection-quote">
                     <span className="message-selection-page">p.{msg.meta.selectionPage}</span>
@@ -347,15 +408,29 @@ export default function ChatPanel() {
                 {msg.createdAt && (
                   <span className={`message-time message-time-${msg.role}`}>{relativeTime(msg.createdAt)}</span>
                 )}
-                {msg.role === 'assistant' && i === chatHistory.length - 1 && sources.length > 0 && (
+                {msg.role === 'assistant' && msg.meta?.sources?.length > 0 && (
                   <div className="message-sources">
-                    {webSearchTriggered && <span className="source-badge web">🌐 Web search</span>}
-                    {!webSearchTriggered &&
-                      [...new Set(sources.map((s) => s.page_number))].map((page) => (
+                    {msg.meta?.webSearchTriggered && <span className="source-badge web">🌐 Web search</span>}
+                    {!msg.meta?.webSearchTriggered &&
+                      [...new Set((msg.meta?.sources || []).map((s) => s.page_number))].map((page) => (
                         <button key={page} className="source-badge" onClick={() => page && setCurrentPage(page)} title={`Jump to page ${page}`}>
                           p.{page}
                         </button>
                       ))}
+                  </div>
+                )}
+                {msg.role === 'assistant' && msg.meta?.saveCandidate && (
+                  <div className="message-actions">
+                    <button
+                      className={`message-log-btn ${savedMessageIds[msg.id] ? 'saved' : ''}`}
+                      onClick={() => handleSaveToIndex(msg.meta.saveCandidate, msg.id)}
+                      disabled={savingMessageId === msg.id || !!savedMessageIds[msg.id]}
+                      title={savedMessageIds[msg.id] ? 'Already logged to index' : 'Log this response to the index as a study card'}
+                    >
+                      {savedMessageIds[msg.id]
+                        ? '✓ Logged'
+                        : (savingMessageId === msg.id ? '⏳ Logging…' : '📚 Log to Index')}
+                    </button>
                   </div>
                 )}
               </div>
@@ -369,21 +444,6 @@ export default function ChatPanel() {
 
             <div ref={bottomRef} />
           </div>
-
-          {/* Log-to-index prompt — outside scroll area so it's always visible */}
-          {logPrompt && !isLoading && (
-            <div className="log-prompt">
-              <span className="log-prompt-icon">📚</span>
-              <span className="log-prompt-text">Log this highlight &amp; Q&amp;A to your index?</span>
-              <div className="log-prompt-actions">
-                <button className="log-prompt-save" onClick={handleSaveToIndex} disabled={isSaving}>
-                  {isSaving ? 'Saving…' : 'Save to Index'}
-                </button>
-                <button className="log-prompt-skip" onClick={() => setLogPrompt(null)}>Skip</button>
-              </div>
-            </div>
-          )}
-
           {/* Selection context chip */}
           {selectionContext && (
             <div className="selection-chip">

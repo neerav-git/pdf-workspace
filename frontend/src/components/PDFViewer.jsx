@@ -95,11 +95,11 @@ function HighlightPopover({ entryId, x, y, onClose }) {
       {/* Actions */}
       <div className="hl-popover-actions">
         <button className="hl-popover-btn hl-popover-btn--index" onClick={handleViewIndex}>
-          → Index
+          Open Index
         </button>
         {qaCount > 0 && (
           <button className="hl-popover-btn hl-popover-btn--review" onClick={handleReview}>
-            ▶ Review
+            Review This Passage
           </button>
         )}
       </div>
@@ -604,7 +604,14 @@ export default function PDFViewer() {
       const rect = range.getBoundingClientRect()
       const sectionPath  = findSectionPath(toc?.items, currentPage)
       const sectionTitle = sectionPath.length > 0 ? sectionPath[sectionPath.length - 1].title : null
-      setSelectionMenu({ x: rect.left + rect.width / 2, y: rect.top, text, pageNumber: currentPage })
+      setSelectionMenu({
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+        text,
+        pageNumber: currentPage,
+        sectionTitle,
+        sectionPath,
+      })
       setSelectionContext({ text, pageNumber: currentPage, sectionTitle, sectionPath })
     }, 10)
   }, [currentPage, setSelectionContext, clearSelectionContext, saveRange, clearHighlight])
@@ -615,14 +622,12 @@ export default function PDFViewer() {
     // CSS highlight intentionally kept alive so the highlight stays visible
   }, [])
 
-  const handleMenuAction = useCallback(({ id, prompt, text, pageNumber }) => {
-    const sectionPath  = findSectionPath(toc?.items, pageNumber)
-    const sectionTitle = sectionPath.length > 0 ? sectionPath[sectionPath.length - 1].title : null
+  const handleMenuAction = useCallback(({ id, prompt, text, pageNumber, sectionTitle, sectionPath }) => {
     useAppStore.setState({
       selectionContext: { text, pageNumber, sectionTitle, sectionPath },
-      pendingSelectionAction: { id, prompt, text, pageNumber },
+      pendingSelectionAction: { id, prompt, text, pageNumber, sectionTitle, sectionPath },
     })
-  }, [toc])
+  }, [])
 
   // ── Editable page number ───────────────────────────────────────────────────
   const commitPageInput = () => {
@@ -863,6 +868,8 @@ export default function PDFViewer() {
           position={{ x: selectionMenu.x, y: selectionMenu.y }}
           text={selectionMenu.text}
           pageNumber={selectionMenu.pageNumber}
+          sectionTitle={selectionMenu.sectionTitle}
+          sectionPath={selectionMenu.sectionPath}
           onAction={handleMenuAction}
           onClose={handleMenuClose}
         />

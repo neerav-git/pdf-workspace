@@ -21,11 +21,22 @@
   flex-shrink: 0;
 }
 
+.rv-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .rv-brand {
   font-size: 14px;
   font-weight: 600;
   color: #efefef;
   letter-spacing: 0.02em;
+}
+
+.rv-scope-label {
+  font-size: 11px;
+  color: #7f8b98;
 }
 
 .rv-progress {

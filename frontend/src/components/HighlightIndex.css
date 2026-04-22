@@ -38,6 +38,7 @@
 }
 .idx-stats-sep  { color: #444; }
 .idx-stats-star { color: #fbbf24; }
+.idx-stats-due  { color: #f2b48c; }
 
 /* ── View tabs ────────────────────────────────────────────────────────────── */
 
@@ -228,6 +229,41 @@
   align-items: center;
   gap: 6px;
   margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+
+.idx-due-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.idx-due-badge--due {
+  background: #3b2215;
+  border: 1px solid #6b3418;
+  color: #f2b48c;
+}
+
+.idx-due-badge--learning {
+  background: #18263a;
+  border: 1px solid #27476f;
+  color: #8ab4f8;
+}
+
+.idx-due-badge--new {
+  background: #1d2b18;
+  border: 1px solid #35552b;
+  color: #98d58b;
+}
+
+.idx-due-badge--reviewed {
+  background: #171717;
+  border: 1px solid #303030;
+  color: #7a7a7a;
 }
 
 /* ── Highlight entry card ─────────────────────────────────────────────────── */
@@ -274,6 +310,31 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.idx-entry-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.idx-entry-focus-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #d9e2ec;
+}
+
+.idx-entry-focus-subtitle {
+  font-size: 10px;
+  color: #718096;
+}
+
+.idx-entry-section-context {
+  font-size: 9.5px;
+  color: #5d6773;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Pull-quote style for the highlighted passage */
@@ -437,9 +498,17 @@
 
 /* Action label area — fixed width so inline preview aligns consistently */
 .idx-qa-label {
-  flex: 0 0 auto;
+  flex: 0 1 260px;
   display: flex;
   align-items: center;
+  min-width: 0;
+}
+
+.idx-qa-label-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
 /* Inline first-sentence preview — takes remaining space, truncates */
@@ -465,12 +534,32 @@
 /* Manual question text — no wrap in header row */
 .idx-qa-q-text {
   font-size: 12px;
-  color: #b0b0b0;
+  color: #d0d6dc;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 100%;
+}
+
+.idx-qa-context {
+  font-size: 10px;
+  color: #6f7d8c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.idx-qa-derived-question {
+  font-size: 9.5px;
+  color: #8b9bb0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.idx-qa-context-quiz {
+  color: #c79b2a;
 }
 
 /* Full question text shown above answer when expanded (manual Q&As) */
@@ -483,6 +572,18 @@
   word-break: break-word;
   border-left: 2px solid #2a2a2a;
   padding-left: 6px;
+}
+
+.idx-qa-full-subtitle {
+  font-size: 10.5px;
+  color: #6f7d8c;
+  margin: 0 0 6px;
+}
+
+.idx-qa-derived-full {
+  font-size: 10.5px;
+  color: #8b9bb0;
+  margin: 0 0 6px;
 }
 
 /* ── Action type badges ───────────────────────────────────────────────────── */
@@ -755,6 +856,65 @@
   word-break: break-word;
 }
 
+.idx-synthesis-deep-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 6px;
+}
+
+.idx-synthesis-deep-btn {
+  background: none;
+  border: 1px solid #2a4a2a;
+  border-radius: 4px;
+  color: #76c476;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-family: inherit;
+  padding: 4px 8px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.idx-synthesis-deep-btn:hover:enabled {
+  border-color: #3b6d3b;
+  color: #9fe09f;
+  background: #0c1b0c;
+}
+
+.idx-synthesis-deep-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.idx-synthesis-deep-btn--secondary {
+  border-color: #2f3d2f;
+  color: #8ba48b;
+}
+
+.idx-synthesis-deep-block {
+  margin-top: 8px;
+  border: 1px solid #1e3a1e;
+  border-radius: 6px;
+  background: #0d170d;
+  padding: 9px 10px;
+}
+
+.idx-synthesis-deep-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #77bd77;
+  margin-bottom: 5px;
+}
+
+.idx-synthesis-deep-text {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #a6d7a6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 /* ── Starred view ─────────────────────────────────────────────────────────── */
 
 .idx-starred-item {
@@ -901,7 +1061,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  max-width: 180px;
 }
 
 /* ── Part 3: Curation bar ──────────────────────────────────────────────────── */
@@ -1179,16 +1339,17 @@
 
 /* ── Per-card review button ───────────────────────────────────────────────── */
 .idx-review-this {
-  background: none;
-  border: none;
-  color: #3a6a9a;
+  background: #12263c;
+  border: 1px solid #21456c;
+  color: #6aa0d4;
   font-size: 10px;
   cursor: pointer;
-  padding: 2px 5px;
+  padding: 2px 7px;
   border-radius: 3px;
-  opacity: 0;
-  transition: opacity .12s, color .12s;
+  opacity: 0.78;
+  transition: opacity .12s, color .12s, background .12s, border-color .12s;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .idx-qa-row:hover .idx-review-this {
@@ -1196,7 +1357,9 @@
 }
 
 .idx-review-this:hover {
-  color: #6aa0d4;
+  color: #c4def4;
+  background: #17314f;
+  border-color: #2e5d90;
 }
 
 /* ── Review bar due badge ─────────────────────────────────────────────────── */
@@ -1214,4 +1377,9 @@
   height: 16px;
   margin-left: 5px;
   line-height: 1;
+}
+
+.idx-review-due-badge--global {
+  background: #2a2a2a;
+  color: #b8b8b8;
 }
