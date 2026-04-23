@@ -26,6 +26,42 @@ from sqlalchemy.orm import Session
 
 from app.models.highlight import QAPair
 from app.services.chat_service import prepare_study_card_question
+from app.services.embedding_service import embed
+
+
+# Cosine threshold above which two study_questions on the same highlight
+# are considered duplicates. 0.85 is conservative enough to preserve
+# legitimate reformulations (e.g. "define term" vs "explain term"); the
+# 4 identical "What is this book about?" QAs on Paper Plain hl=16 sit
+# well above 0.95.
+DEDUP_COSINE_THRESHOLD = 0.85
+
+
+class DuplicateStudyQuestion(Exception):
+    """Raised by create_card when a near-identical QA already exists on the
+    same highlight. Carries the existing qa_id + similarity so the router can
+    surface them in the 409 response body."""
+
+    def __init__(self, existing_qa_id: int, existing_study_question: str, similarity: float):
+        super().__init__(
+            f"Duplicate study_question (qa_id={existing_qa_id}, "
+            f"similarity={similarity:.3f})"
+        )
+        self.existing_qa_id = existing_qa_id
+        self.existing_study_question = existing_study_question
+        self.similarity = similarity
+
+
+class ExtractionFailed(Exception):
+    """Raised by create_card when an action-type card can't produce a
+    non-fallback study_question — i.e. Haiku rewrite failed AND no
+    structured quiz block was found. The router turns this into 422 so
+    callers don't silently accept raw prompts."""
+
+    def __init__(self, card_type: str, detail: str):
+        super().__init__(detail)
+        self.card_type = card_type
+        self.detail = detail
 
 
 # Card-type enum values used across the app. Keep this list aligned with the
@@ -89,6 +125,13 @@ def _clean_manual_question(question: str) -> str:
     return cleaned.strip()
 
 
+def is_fallback_study_question(card_type: str, text: str | None) -> bool:
+    """True when `text` equals the per-type generic recall template — the
+    signal that Haiku/quiz extraction fell through to the safety net."""
+    fallback = _FALLBACK_STUDY_QUESTION.get(card_type)
+    return bool(fallback) and (text or "").strip() == fallback
+
+
 def derive_study_question(
     *,
     card_type: str,
@@ -96,10 +139,18 @@ def derive_study_question(
     answer: str,
     selection_text: str | None = None,
     original_question: str | None = None,
+    strict: bool = False,
 ) -> str:
     """
-    Compute the canonical standalone study question. Always returns a non-empty
-    string — falls back to the user's raw question if LLM rewriting fails.
+    Compute the canonical standalone study question.
+
+    Normal path: returns an extracted/rewritten question.
+
+    When ``strict=True`` (new writes via the API), raises
+    ``ExtractionFailed`` if an action-type card would have to fall back to
+    the generic template — callers see a 422 instead of silently storing a
+    low-signal card. ``strict=False`` preserves the fallback template so
+    backfill/migration paths keep the UI readable.
     """
     if card_type == "quiz":
         extracted = _extract_quiz_question(answer)
@@ -117,9 +168,72 @@ def derive_study_question(
     if rewritten and rewritten.strip() and not _is_raw_action_prompt(rewritten):
         return rewritten.strip()
 
-    # Haiku fell back to the raw prompt (or nothing). Use the per-type
-    # generic recall prompt so the review UI never surfaces an ACTION prefix.
+    # Haiku fell back to the raw prompt (or nothing).
+    if strict and card_type in _ACTION_TYPES:
+        raise ExtractionFailed(
+            card_type,
+            f"Could not derive a standalone study_question for card_type={card_type!r}. "
+            "Haiku rewrite returned an empty or raw-prompt response.",
+        )
+
+    # Use the per-type generic recall prompt so the review UI never surfaces
+    # an ACTION prefix. Legacy / non-strict callers only.
     return _FALLBACK_STUDY_QUESTION.get(card_type) or _clean_manual_question(raw) or raw
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    # Both vectors are L2-normalised by SentenceTransformer(normalize_embeddings=True),
+    # so dot product == cosine similarity.
+    return sum(x * y for x, y in zip(a, b))
+
+
+def find_duplicate(
+    db: Session,
+    *,
+    highlight_id: int,
+    study_question: str,
+    threshold: float = DEDUP_COSINE_THRESHOLD,
+) -> Optional[QAPair]:
+    """Return the nearest existing non-archived QA on this highlight whose
+    study_question is within ``threshold`` cosine of ``study_question``,
+    else None. Attaches ``_similarity`` onto the returned row for the router
+    to include in the 409 body.
+    """
+    q_clean = (study_question or "").strip()
+    if not q_clean:
+        return None
+
+    existing = (
+        db.query(QAPair)
+        .filter(
+            QAPair.highlight_id == highlight_id,
+            QAPair.archived_at.is_(None),
+        )
+        .all()
+    )
+    if not existing:
+        return None
+
+    # Dedup against canonical study_question (fall back to question field for
+    # any very-old row that predates the step-1 migration — defensive only).
+    texts = [(q.study_question or q.question or "").strip() for q in existing]
+    pairs = [(q, t) for q, t in zip(existing, texts) if t]
+    if not pairs:
+        return None
+
+    vecs = embed([q_clean] + [t for _, t in pairs])
+    target = vecs[0]
+    best_qa: QAPair | None = None
+    best_sim = -1.0
+    for (qa, _), v in zip(pairs, vecs[1:]):
+        sim = _cosine(target, v)
+        if sim > best_sim:
+            best_sim = sim
+            best_qa = qa
+    if best_qa is not None and best_sim >= threshold:
+        best_qa._similarity = best_sim  # type: ignore[attr-defined]
+        return best_qa
+    return None
 
 
 def create_card(
@@ -133,10 +247,16 @@ def create_card(
     source_chunk_ids: Optional[Iterable[str]] = None,
     selection_text: str | None = None,
     origin_chat_message_id: int | None = None,
+    force: bool = False,
 ) -> QAPair:
     """
     Persist a new study card. All QA creation flows funnel through this function
-    so study_question canonicalization happens in exactly one place.
+    so study_question canonicalization + dedup happen in exactly one place.
+
+    Raises:
+        ExtractionFailed — action-type card with no derivable study_question.
+        DuplicateStudyQuestion — a near-identical QA already exists on this
+            highlight (suppress with ``force=True``).
     """
     if card_type not in VALID_CARD_TYPES:
         raise ValueError(f"Invalid card_type: {card_type!r}")
@@ -147,7 +267,21 @@ def create_card(
         answer=answer,
         selection_text=selection_text,
         original_question=original_question,
+        strict=True,
     )
+
+    if not force:
+        dup = find_duplicate(
+            db,
+            highlight_id=highlight_id,
+            study_question=study_question,
+        )
+        if dup is not None:
+            raise DuplicateStudyQuestion(
+                existing_qa_id=dup.id,
+                existing_study_question=dup.study_question or dup.question,
+                similarity=getattr(dup, "_similarity", 1.0),
+            )
 
     qa = QAPair(
         highlight_id=highlight_id,

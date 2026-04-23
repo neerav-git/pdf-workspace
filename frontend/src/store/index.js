@@ -8,6 +8,8 @@ import {
   postQA,
   patchQA,
   deleteQA,
+  mergeAnswerIntoQA,
+  logDedupChoice,
 } from '../api/highlights'
 
 export const useAppStore = create(persist((set, get) => ({
@@ -66,7 +68,7 @@ export const useAppStore = create(persist((set, get) => ({
   // All writes: POST/PATCH/DELETE to API first → update local state with DB-returned IDs
   highlightIndex: [],
 
-  saveToIndex: async ({ pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath, deepSectionPath, chunkId, concepts, highlightText, cardType = 'manual', question, originalQuestion = null, answer, sourceChunkIds = [], originChatMessageId = null }) => {
+  saveToIndex: async ({ pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath, deepSectionPath, chunkId, concepts, highlightText, cardType = 'manual', question, originalQuestion = null, answer, sourceChunkIds = [], originChatMessageId = null, force = false }) => {
     const s = get()
     const existing = chunkId
       ? s.highlightIndex.find((e) => e.pdfId === pdfId && e.chunkId === chunkId)
@@ -79,9 +81,8 @@ export const useAppStore = create(persist((set, get) => ({
       const mergedTexts = existingTexts.includes(highlightText) ? existingTexts : [...existingTexts, highlightText]
 
       try {
-        // Create QA in DB; pass selection_text so review shows the right source passage
-        // when this QA is merged into an entry with a different primary highlight_text.
         // card_type declares which action produced this card; server derives study_question.
+        // Server may 409 on a near-duplicate — surface it up so the caller can prompt the user.
         const qa = await postQA(existing.id, {
           card_type: cardType,
           question,
@@ -90,10 +91,8 @@ export const useAppStore = create(persist((set, get) => ({
           source_chunk_ids: sourceChunkIds,
           selection_text: highlightText,
           origin_chat_message_id: originChatMessageId,
-        })
-        // Patch highlight with merged concepts/texts
+        }, { force })
         await patchHighlight(existing.id, { concepts: mergedConcepts, highlight_texts: mergedTexts })
-        // Update local state
         set((s2) => ({
           highlightIndex: s2.highlightIndex.map((e) =>
             e.id === existing.id
@@ -103,14 +102,25 @@ export const useAppStore = create(persist((set, get) => ({
         }))
         return { entryId: existing.id, qaId: qa.id }
       } catch (e) {
+        const dup = interpretDuplicateError(e, {
+          pdfId,
+          highlightId: existing.id,
+          attemptedStudyQuestion: question,
+          cardType,
+        })
+        if (dup) return dup
         console.error('saveToIndex (merge) failed:', e)
+        throw e
       }
-      return
     }
 
-    // New entry — POST highlight, then POST QA under it
+    // New entry — POST highlight, then POST QA under it. A 409 on the QA here
+    // means the highlight was just created but the QA collided with a pre-existing
+    // card on the same highlight (rare — only if the highlight-merge lookup above
+    // missed). Caller can retry with force=true.
+    let createdEntry
     try {
-      const entry = await postHighlight(pdfId, {
+      createdEntry = await postHighlight(pdfId, {
         page_number: pageNumber,
         highlight_text: highlightText,
         highlight_texts: [highlightText],
@@ -121,7 +131,7 @@ export const useAppStore = create(persist((set, get) => ({
         concepts: concepts || [],
         note: '',
       })
-      const qa = await postQA(entry.id, {
+      const qa = await postQA(createdEntry.id, {
         card_type: cardType,
         question,
         original_question: originalQuestion,
@@ -129,17 +139,69 @@ export const useAppStore = create(persist((set, get) => ({
         source_chunk_ids: sourceChunkIds,
         selection_text: highlightText,
         origin_chat_message_id: originChatMessageId,
-      })
+      }, { force })
       set((s2) => ({
         highlightIndex: [
-          { ...normalizeEntry(entry), pdfTitle, qaPairs: [normalizeQA(qa)] },
+          { ...normalizeEntry(createdEntry), pdfTitle, qaPairs: [normalizeQA(qa)] },
           ...s2.highlightIndex,
         ],
       }))
-      return { entryId: entry.id, qaId: qa.id }
+      return { entryId: createdEntry.id, qaId: qa.id }
     } catch (e) {
+      if (createdEntry) {
+        const dup = interpretDuplicateError(e, {
+          pdfId,
+          highlightId: createdEntry.id,
+          attemptedStudyQuestion: question,
+          cardType,
+        })
+        if (dup) return dup
+      }
       console.error('saveToIndex (new) failed:', e)
+      throw e
     }
+  },
+
+  // Follow-up action taken after saveToIndex returns a duplicate result.
+  // `choice` is one of "open_existing" | "merge" | "force_save" | "dismiss".
+  resolveDuplicateConflict: async ({ choice, duplicate, payload }) => {
+    try { await logDedupChoice({
+      pdf_id: payload?.pdfId ?? null,
+      highlight_id: duplicate.highlightId,
+      choice,
+      existing_qa_id: duplicate.existingQaId,
+      similarity: duplicate.similarity,
+      attempted_study_question: duplicate.attemptedStudyQuestion,
+      card_type: duplicate.cardType,
+    }) } catch (_) { /* telemetry only — never block the user's choice */ }
+
+    if (choice === 'open_existing' || choice === 'dismiss') {
+      return { entryId: duplicate.highlightId, qaId: duplicate.existingQaId }
+    }
+    if (choice === 'merge') {
+      try {
+        const merged = await mergeAnswerIntoQA(duplicate.existingQaId, {
+          appended_answer: payload.answer,
+          appended_from_qa_question: payload.question,
+        })
+        // Replace the matching QA in local state so the merged answer shows immediately.
+        set((s2) => ({
+          highlightIndex: s2.highlightIndex.map((e) =>
+            e.id === duplicate.highlightId
+              ? { ...e, qaPairs: e.qaPairs.map((q) => (q.id === merged.id ? normalizeQA(merged) : q)) }
+              : e,
+          ),
+        }))
+        return { entryId: duplicate.highlightId, qaId: merged.id }
+      } catch (e) {
+        console.error('mergeAnswerIntoQA failed:', e)
+        throw e
+      }
+    }
+    if (choice === 'force_save') {
+      return get().saveToIndex({ ...payload, force: true })
+    }
+    return null
   },
 
   toggleStarEntry: async (entryId) => {
@@ -387,6 +449,29 @@ export const useAppStore = create(persist((set, get) => ({
   version: 1,
   partialize: (state) => ({ chatHistoriesByPdf: state.chatHistoriesByPdf }),
 }))
+
+// ── 409 dedup response parser ─────────────────────────────────────────────────
+//
+// The server 409 body looks like:
+//   { detail: { code: 'duplicate_study_question',
+//               existing_qa_id, existing_study_question, similarity } }
+// Return a structured duplicate descriptor on match, or null if the error is
+// something else the caller should surface as an error.
+function interpretDuplicateError(err, { pdfId, highlightId, attemptedStudyQuestion, cardType }) {
+  const status = err?.response?.status
+  const detail = err?.response?.data?.detail
+  if (status !== 409 || !detail || detail.code !== 'duplicate_study_question') return null
+  return {
+    duplicate: true,
+    pdfId,
+    highlightId,
+    existingQaId: detail.existing_qa_id,
+    existingStudyQuestion: detail.existing_study_question,
+    similarity: detail.similarity,
+    attemptedStudyQuestion,
+    cardType,
+  }
+}
 
 // ── Normalizers — map DB snake_case to UI camelCase ───────────────────────────
 

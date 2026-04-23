@@ -122,6 +122,8 @@ def submit_review(body: SubmitReviewRequest, db: Session = Depends(get_db)):
     qa = db.get(QAPair, body.qa_pair_id)
     if not qa:
         raise HTTPException(status_code=404, detail="Q&A pair not found")
+    if qa.archived_at is not None:
+        raise HTTPException(status_code=410, detail="Q&A pair has been archived")
 
     highlight = qa.highlight_entry
     if not highlight:
@@ -216,11 +218,16 @@ def get_due_cards(limit: int = 20, db: Session = Depends(get_db)):
     """
     Global due-card queue — all cards due now across all PDFs, ordered by most overdue.
     Used by the main review session (/review route).
+    Archived cards are excluded (deep-fix step 2).
     """
     now = datetime.now(timezone.utc)
     cards = (
         db.query(QAPair)
-        .filter(QAPair.due_at <= now, QAPair.state != "suspended")
+        .filter(
+            QAPair.due_at <= now,
+            QAPair.state != "suspended",
+            QAPair.archived_at.is_(None),
+        )
         .order_by(QAPair.due_at.asc())
         .limit(limit)
         .all()
@@ -234,6 +241,7 @@ def get_due_cards_for_pdf(pdf_id: int, limit: int = 20, db: Session = Depends(ge
     PDF-scoped due cards — for Quiz Me on a specific document.
     Same grading engine as the main review session; just a different card selection.
     (Research D4: Quiz Me and Review Session share the same grading engine.)
+    Archived cards are excluded (deep-fix step 2).
     """
     now = datetime.now(timezone.utc)
     cards = (
@@ -243,6 +251,7 @@ def get_due_cards_for_pdf(pdf_id: int, limit: int = 20, db: Session = Depends(ge
             QAPair.highlight_entry.has(pdf_id=pdf_id),
             QAPair.due_at <= now,
             QAPair.state != "suspended",
+            QAPair.archived_at.is_(None),
         )
         .order_by(QAPair.due_at.asc())
         .limit(limit)
@@ -257,16 +266,25 @@ def get_qa_review_data(qa_id: int, db: Session = Depends(get_db)):
     qa = db.get(QAPair, qa_id)
     if not qa:
         raise HTTPException(status_code=404, detail="Q&A pair not found")
+    if qa.archived_at is not None:
+        raise HTTPException(status_code=410, detail="Q&A pair has been archived")
     return _qa_to_due_response(qa)
 
 
 @router.get("/api/review/stats")
 def get_review_stats(db: Session = Depends(get_db)):
-    """Quick card counts for the review session header."""
+    """Quick card counts for the review session header. Archived cards excluded."""
     now = datetime.now(timezone.utc)
-    total  = db.query(QAPair).filter(QAPair.state != "suspended").count()
-    due    = db.query(QAPair).filter(QAPair.due_at <= now, QAPair.state != "suspended").count()
-    new    = db.query(QAPair).filter(QAPair.state == "new").count()
+    active = db.query(QAPair).filter(
+        QAPair.state != "suspended",
+        QAPair.archived_at.is_(None),
+    )
+    total  = active.count()
+    due    = active.filter(QAPair.due_at <= now).count()
+    new    = db.query(QAPair).filter(
+        QAPair.state == "new",
+        QAPair.archived_at.is_(None),
+    ).count()
     return {"total": total, "due_now": due, "new": new}
 
 

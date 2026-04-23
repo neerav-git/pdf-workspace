@@ -73,18 +73,20 @@ class ReviewLog(Base):
 
 class SessionEvent(Base):
     """
-    Engagement logging. Home for visual_chat and feynman sessions.
+    Engagement logging. Home for visual_chat and feynman sessions, and
+    (deep-fix step 2) dedup-modal choice events.
     These must NOT go in review_log. (Research E2, K2, L2)
     """
     __tablename__ = "session_events"
 
     id              = Column(Integer, primary_key=True, index=True)
-    session_type    = Column(String(20))   # review|quiz|read|chat|visual_chat|feynman
+    session_type    = Column(String(20))   # review|quiz|read|chat|visual_chat|feynman|dedup_choice
     pdf_id          = Column(Integer, ForeignKey("pdf_documents.id"))
     started_at      = Column(DateTime(timezone=True))
     ended_at        = Column(DateTime(timezone=True))
     item_count      = Column(Integer)
     condition_label = Column(String(20))   # for study participants only
+    meta_json       = Column(JSONB)        # free-form payload (e.g. dedup choice + similarity)
 
 
 class HumanGrade(Base):

@@ -60,6 +60,10 @@ class QAPair(Base):
     # Provenance link back to the chat message that produced this card (step 5).
     origin_chat_message_id = Column(Integer)
 
+    # Soft-delete tombstone (deep-fix step 2). Non-null => excluded from index
+    # and review reads; stays in the DB so review_log rows remain join-able.
+    archived_at      = Column(DateTime(timezone=True))
+
     # FSRS state inline (Research B1: no separate memory_items table)
     stability        = Column(Float, default=0.0)
     difficulty       = Column(Float, default=0.3)
@@ -78,5 +82,11 @@ class QAPair(Base):
     review_logs      = relationship("ReviewLog", back_populates="qa_pair")
 
 
-# Partial index for due-card queries — only include non-suspended cards
-Index("ix_qa_pairs_due_at_active", QAPair.due_at, postgresql_where=(QAPair.state != "suspended"))
+# Partial index for due-card queries — only include non-suspended, non-archived cards
+Index(
+    "ix_qa_pairs_due_at_active",
+    QAPair.due_at,
+    postgresql_where=(
+        (QAPair.state != "suspended") & (QAPair.archived_at.is_(None))
+    ),
+)

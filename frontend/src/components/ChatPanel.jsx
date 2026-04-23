@@ -6,6 +6,7 @@ import { resolveChunk } from '../api/pdfs'
 import { extractConcepts } from '../api/chat'
 import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
+import DuplicateStudyQuestionModal from './DuplicateStudyQuestionModal'
 import './ChatPanel.css'
 
 // SelectionMenu action ids that map directly to card_type values on the server.
@@ -67,6 +68,7 @@ export default function ChatPanel() {
     addNote,
     notes,
     saveToIndex,
+    resolveDuplicateConflict,
     highlightIndex,
   } = useAppStore()
 
@@ -76,6 +78,8 @@ export default function ChatPanel() {
   const [savingMessageId, setSavingMessageId] = useState(null)
   const [savedMessageIds, setSavedMessageIds] = useState({})
   const [copiedIdx, setCopiedIdx] = useState(null) // index of message whose copy was just clicked
+  // Duplicate-card modal state: { duplicate, pendingSave: {payload, messageId} }
+  const [duplicatePrompt, setDuplicatePrompt] = useState(null)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   // action id of the pending SelectionMenu action, captured at send time so
@@ -230,9 +234,8 @@ export default function ChatPanel() {
         ? extendToSentenceBoundary(candidate.selectionText, resolved?.chunk_text)
         : (primarySource?.text ? buildChatInsightAnchor(primarySource) : `Chat insight: ${candidate.question}`)
 
-      // Server canonicalizes study_question via card_service.create_card.
-      // Client sends the raw user question + card_type; no client-side rewrite.
-      const saved = await saveToIndex({
+      // Payload kept in a local so we can retry with force=true via the modal.
+      const payload = {
         pdfId: selectedPdf.id,
         pdfTitle: selectedPdf.title,
         pageNumber: candidate.selectionPage || primarySource?.page_number || null,
@@ -249,7 +252,17 @@ export default function ChatPanel() {
         sourceChunkIds: candidate.kind === 'selection'
           ? (resolved?.chunk_id ? [resolved.chunk_id] : [])
           : (candidate.sourceCandidates || []).map((s) => s.chunk_id).filter(Boolean),
-      })
+      }
+
+      const saved = await saveToIndex(payload)
+
+      if (saved?.duplicate) {
+        // Server flagged a near-duplicate; hand off to the modal so the user
+        // chooses open/merge/force. Don't toggle savedMessageIds until resolved.
+        setDuplicatePrompt({ duplicate: saved, payload, messageId, highlightText })
+        return
+      }
+
       setSavedMessageIds((prev) => ({ ...prev, [messageId]: true }))
       if (saved?.entryId) {
         useAppStore.setState({
@@ -257,7 +270,7 @@ export default function ChatPanel() {
             entryId: saved.entryId,
             qaId: saved.qaId || null,
             text: highlightText,
-            pageNumber: candidate.selectionPage || primarySource?.page_number || null,
+            pageNumber: payload.pageNumber,
           },
         })
       }
@@ -265,6 +278,32 @@ export default function ChatPanel() {
     } finally {
       setSavingMessageId(null)
     }
+  }
+
+  const handleDuplicateChoice = async (choice) => {
+    if (!duplicatePrompt) return
+    const { duplicate, payload, messageId, highlightText } = duplicatePrompt
+    const result = await resolveDuplicateConflict({ choice, duplicate, payload })
+    if (result?.entryId) {
+      setSavedMessageIds((prev) => ({ ...prev, [messageId]: true }))
+      useAppStore.setState({
+        indexFocus: {
+          entryId: result.entryId,
+          qaId: result.qaId || null,
+          text: highlightText,
+          pageNumber: payload.pageNumber,
+        },
+      })
+      setActiveTab('index')
+    }
+    setDuplicatePrompt(null)
+  }
+
+  const handleDuplicateDismiss = () => {
+    if (duplicatePrompt) {
+      resolveDuplicateConflict({ choice: 'dismiss', duplicate: duplicatePrompt.duplicate, payload: duplicatePrompt.payload })
+    }
+    setDuplicatePrompt(null)
   }
 
   // ── selection action handler ───────────────────────────────────────────────
@@ -535,6 +574,18 @@ export default function ChatPanel() {
             </button>
           </div>
         </>
+      )}
+
+      {duplicatePrompt && (
+        <DuplicateStudyQuestionModal
+          duplicate={duplicatePrompt.duplicate}
+          attempted={{
+            question: duplicatePrompt.payload?.question,
+            studyQuestion: duplicatePrompt.payload?.question,
+          }}
+          onChoose={handleDuplicateChoice}
+          onDismiss={handleDuplicateDismiss}
+        />
       )}
     </aside>
   )
