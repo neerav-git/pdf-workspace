@@ -38,11 +38,19 @@ router = APIRouter(tags=["review"])
 
 # ── Request / Response schemas ────────────────────────────────────────────────
 
+VALID_RECALL_MODES = {"free_recall", "cloze", "assisted"}
+
+
 class SubmitReviewRequest(BaseModel):
     qa_pair_id: int
     recall_text: str
     confidence_rating: int           # 1–5, user's pre-grade self-rating (NOT the FSRS input)
     recall_latency_ms: Optional[int] = None
+    # Deep-fix step 3 retrieval-mode telemetry.
+    # reveal_used: user revealed the source passage in Phase 1.
+    # recall_mode: free_recall | cloze | assisted (see SCIM/Paper Plain rationale).
+    reveal_used: bool = False
+    recall_mode: Optional[str] = None
 
 
 class DimensionScore(BaseModel):
@@ -125,6 +133,12 @@ def submit_review(body: SubmitReviewRequest, db: Session = Depends(get_db)):
     if qa.archived_at is not None:
         raise HTTPException(status_code=410, detail="Q&A pair has been archived")
 
+    if body.recall_mode is not None and body.recall_mode not in VALID_RECALL_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid recall_mode: {body.recall_mode!r}. Must be one of {sorted(VALID_RECALL_MODES)}.",
+        )
+
     highlight = qa.highlight_entry
     if not highlight:
         raise HTTPException(status_code=404, detail="Associated highlight not found")
@@ -163,6 +177,8 @@ def submit_review(body: SubmitReviewRequest, db: Session = Depends(get_db)):
         confidence_rating         = body.confidence_rating,
         recall_text               = body.recall_text,
         recall_latency_ms         = body.recall_latency_ms,
+        reveal_used               = body.reveal_used,
+        recall_mode               = body.recall_mode,
         # Claude grades
         claude_grade_overall      = overall_score,
         claude_grade_core         = grades.get("core_claim_score"),

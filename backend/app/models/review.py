@@ -43,6 +43,13 @@ class ReviewLog(Base):
     recall_text               = Column(Text)
     recall_latency_ms         = Column(Integer)         # card-shown → submit
 
+    # Retrieval-mode telemetry (deep-fix step 3, SCIM + Paper Plain):
+    # reveal_used → user revealed the source passage in Phase 1
+    # recall_mode → free_recall | cloze | assisted
+    # Primary-claim regression should restrict to reveal_used = FALSE rows.
+    reveal_used               = Column(Boolean, nullable=False, default=False)
+    recall_mode               = Column(String(12))
+
     # Claude grades (3-dimensional analytical rubric — Research C1)
     claude_grade_overall      = Column(SmallInteger)    # mean of 3 dimensions
     claude_grade_core         = Column(SmallInteger)

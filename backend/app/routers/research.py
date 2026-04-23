@@ -65,6 +65,10 @@ def export_review_log(
             # User inputs (pre-grade)
             "confidence_rating":        log.confidence_rating,
             "recall_text":              log.recall_text,
+            # Retrieval-mode telemetry (deep-fix step 3).
+            # Primary retention claim is defined against reveal_used=False rows only.
+            "reveal_used":              log.reveal_used,
+            "recall_mode":              log.recall_mode,
             # Source content
             "question":                 qa.question,
             "expected_answer":          qa.answer,

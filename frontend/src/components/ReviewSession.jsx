@@ -1,13 +1,19 @@
 /**
- * ReviewSession — dedicated full-screen review UI (Research D1-D5)
+ * ReviewSession — dedicated full-screen review UI (Research D1-D5, deep-fix step 3).
  *
  * Per-card flow (3 phases):
- *   Phase 1 "recall"  — Source passage shown, answer hidden. User types recall
- *                       + sets confidence rating. Both submitted in ONE call
- *                       BEFORE the grade is revealed. (Research D2 — methodologically
- *                       non-negotiable: if user sees grade first, calibration data is invalid.)
- *   Phase 2 "graded"  — Grade + 3-dim scores + feedback + correct answer revealed.
- *                       Next-card or finish controls.
+ *   Phase 1 "recall"  — study_question → confidence → recall textarea → submit.
+ *                       Source passage is HIDDEN by default (Paper Plain gist-on-demand).
+ *                       For manual/quiz/chat cards the user may tap "Reveal passage"
+ *                       (cloze) or escalate to "Show full passage" (assisted). Any
+ *                       reveal sets reveal_used=true on the review_log row so the
+ *                       primary retention claim can be restricted to free-recall rows.
+ *                       For action cards (explain/simplify/terms/summarise) no reveal
+ *                       is offered — the source appears only in Phase 2.
+ *                       Confidence + recall are submitted in ONE call BEFORE the grade
+ *                       is revealed (Research D2 — calibration is otherwise invalid).
+ *   Phase 2 "graded"  — Grade + 3-dim scores + feedback + correct answer + source
+ *                       passage revealed. Next-card or finish controls.
  *   Phase 3 "done"    — Session complete. Stats + return button.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -102,38 +108,7 @@ function ConfidenceRating({ value, onChange }) {
   )
 }
 
-// ── Review mode toggle ────────────────────────────────────────────────────────
-
-function ReviewModeToggle({ mode, onChange }) {
-  return (
-    <div className="rv-mode-toggle-wrap">
-      <div className="rv-mode-toggle">
-        <button
-          className={`rv-mode-btn ${mode === 'concept' ? 'rv-mode-btn--active' : ''}`}
-          onClick={() => onChange('concept')}
-          type="button"
-        >
-          Concept
-        </button>
-        <button
-          className={`rv-mode-btn ${mode === 'detail' ? 'rv-mode-btn--active' : ''}`}
-          onClick={() => onChange('detail')}
-          type="button"
-        >
-          Detail
-        </button>
-      </div>
-      <span
-        className="rv-mode-info"
-        title="Concept: full passage shown — test your understanding of the idea&#10;Detail: key words hidden — test your recall of specific facts"
-      >
-        ⓘ
-      </span>
-    </div>
-  )
-}
-
-// ── Cloze passage (Detail mode) ───────────────────────────────────────────────
+// ── Cloze passage (reveal → cloze sub-mode) ──────────────────────────────────
 // Deterministically masks ~30% of content words (length ≥ 4, non-numeric).
 // Every 3rd content word is masked, starting at index 0.
 // Click a masked word to reveal it persistently; click again to re-mask.
@@ -205,8 +180,12 @@ export default function ReviewSession() {
   const [gradeResult, setGradeResult] = useState(null)
   const [submitting, setSubmitting]   = useState(false)
   const [error, setError]         = useState(null)
-  // null = use card-type default; 'concept' | 'detail' = user override
-  const [reviewMode, setReviewMode] = useState(null)
+  // Phase 1 reveal state (step 3).
+  //   'hidden'    — source panel not shown. recall_mode → 'free_recall'.
+  //   'cloze'     — source panel shown with ~30% masked. recall_mode → 'cloze'.
+  //   'assisted'  — full source text shown. recall_mode → 'assisted'.
+  // Any transition away from 'hidden' flips reveal_used to true on the review_log row.
+  const [revealState, setRevealState] = useState('hidden')
 
   const cardShownAt = useRef(null)
   const textareaRef = useRef(null)
@@ -253,12 +232,18 @@ export default function ReviewSession() {
     setSubmitting(true)
     setError(null)
     const latency = cardShownAt.current ? Date.now() - cardShownAt.current : null
+    // revealState → recall_mode enum on the server. reveal_used is any non-hidden state.
+    const recallMode = revealState === 'hidden' ? 'free_recall'
+                      : revealState === 'cloze' ? 'cloze'
+                      : 'assisted'
     try {
       const result = await submitReview({
         qa_pair_id: card.id,
         recall_text: recallText.trim(),
         confidence_rating: confidence,
         recall_latency_ms: latency,
+        reveal_used: revealState !== 'hidden',
+        recall_mode: recallMode,
       })
       setGradeResult(result)
       setPhase('graded')
@@ -267,7 +252,7 @@ export default function ReviewSession() {
     } finally {
       setSubmitting(false)
     }
-  }, [card, recallText, confidence, submitting])
+  }, [card, recallText, confidence, submitting, revealState])
 
   const handleNext = useCallback(() => {
     const next = idx + 1
@@ -278,7 +263,7 @@ export default function ReviewSession() {
       setRecallText('')
       setConfidence(0)
       setGradeResult(null)
-      setReviewMode(null) // reset to card-type default for each new card
+      setRevealState('hidden') // reset to hidden source on every card (step 3 default)
       setPhase('recall')
     }
   }, [idx, cards.length])
@@ -363,16 +348,15 @@ export default function ReviewSession() {
     const canSubmit = recallText.trim().length > 0 && confidence > 0 && !submitting
     const { question: displayQuestion, isAction, actionType } = resolveDisplayQuestion(card)
 
-    // Default mode: quiz cards → detail (cloze), everything else → concept (full)
-    const defaultMode = (card.card_type || 'manual') === 'quiz' ? 'detail' : 'concept'
-    const effectiveMode = reviewMode ?? defaultMode
+    // Action cards (explain/simplify/terms/summarise) derive meaning from the passage
+    // itself — showing it in Phase 1 would defeat the point. Those cards never offer
+    // a reveal; the passage appears only in Phase 2. Manual/quiz/chat cards allow
+    // reveal-on-demand with the reveal_used flag logged.
+    const allowReveal = !isAction
 
-    // Action type labels for the badge shown when we can't show a raw question
     const ACTION_LABELS = {
       explain: 'Explain', simplify: 'Simplify', terms: 'Key Terms', summarise: 'Summarise',
     }
-
-    // Action-specific recall prompts (Fix 18)
     const ACTION_PROMPTS = {
       explain:   'What does this passage mean in your own words?',
       simplify:  'Explain this as simply as possible — no jargon.',
@@ -380,38 +364,32 @@ export default function ReviewSession() {
       summarise: 'Summarise this passage from memory in 2–3 sentences.',
     }
 
+    const cardTypeBadge = (() => {
+      const t = card.card_type || 'manual'
+      if (t === 'manual' || t === 'chat') return null
+      const label = ACTION_LABELS[t] || (t === 'quiz' ? 'Quiz Me' : t)
+      return <span className={`rv-action-badge rv-action-${t}`}>{label}</span>
+    })()
+
     return (
       <div className="rv-overlay">
         {renderHeader()}
         <div className="rv-card-wrap" onKeyDown={handleKeyDown}>
-          {/* Source passage context — show the user's specific selection, not the full chunk.
-              Clean PDF hyphenation artifacts (treat-\nments → treatments) for readability. */}
-          {card.highlight_text && (
-            <div className="rv-source">
-              <div className="rv-source-header">
-                <span className="rv-source-label">Source passage</span>
-                <ReviewModeToggle mode={effectiveMode} onChange={setReviewMode} />
-              </div>
-              {effectiveMode === 'detail'
-                ? <ClozePassage text={cleanHighlightText(card.highlight_text)} />
-                : <p className="rv-source-text">{cleanHighlightText(card.highlight_text)}</p>
-              }
-              {card.section_title && (
-                <span className="rv-source-meta">{card.section_title}{card.page_number ? ` · p. ${card.page_number}` : ''}</span>
-              )}
-            </div>
-          )}
+          {/* Phase 1 layout (deep-fix step 3): question first, source hidden by default.
+              Ordering forces the user to retrieve before re-reading — without which the
+              primary retention claim degenerates into "does re-reading help?". */}
 
-          {/* Question — use extracted question for Quiz Me; generic prompt for other actions */}
+          {/* Question — study_question (preferred) or generic action prompt */}
           {displayQuestion
-            ? <div className="rv-question">{displayQuestion}</div>
+            ? (
+              <div className="rv-question">
+                {cardTypeBadge && <div className="rv-question-badges">{cardTypeBadge}</div>}
+                <span>{displayQuestion}</span>
+              </div>
+            )
             : (
               <div className="rv-question rv-question--action">
-                {isAction && actionType && (
-                  <span className={`rv-action-badge rv-action-${actionType}`}>
-                    {ACTION_LABELS[actionType] || actionType}
-                  </span>
-                )}
+                {cardTypeBadge}
                 <span className="rv-question-generic">
                   {(isAction && actionType && ACTION_PROMPTS[actionType]) || 'What do you recall about this passage?'}
                 </span>
@@ -434,6 +412,57 @@ export default function ReviewSession() {
             />
             <div className="rv-recall-hint">⌘↵ to submit</div>
           </div>
+
+          {/* Reveal affordance — only for non-action cards. Any click flips
+              reveal_used for this review_log row. */}
+          {allowReveal && card.highlight_text && revealState === 'hidden' && (
+            <div className="rv-reveal-controls">
+              <button
+                type="button"
+                className="rv-reveal-btn"
+                onClick={() => setRevealState('cloze')}
+                title="Counts as assisted — recall credit is adjusted in the research export"
+              >
+                ▸ Reveal passage (counts as assisted)
+              </button>
+            </div>
+          )}
+
+          {allowReveal && card.highlight_text && revealState !== 'hidden' && (
+            <div className="rv-source rv-source--reveal">
+              <div className="rv-source-header">
+                <span className="rv-source-label">
+                  Source passage
+                  <span className="rv-reveal-flag">assisted</span>
+                </span>
+                <div className="rv-reveal-toggle">
+                  <button
+                    type="button"
+                    className={`rv-reveal-opt ${revealState === 'cloze' ? 'rv-reveal-opt--active' : ''}`}
+                    onClick={() => setRevealState('cloze')}
+                    title="Hide ~30% of content words — you must still produce them"
+                  >
+                    Cloze
+                  </button>
+                  <button
+                    type="button"
+                    className={`rv-reveal-opt ${revealState === 'assisted' ? 'rv-reveal-opt--active' : ''}`}
+                    onClick={() => setRevealState('assisted')}
+                    title="Show full passage (maximum assistance)"
+                  >
+                    Full passage
+                  </button>
+                </div>
+              </div>
+              {revealState === 'cloze'
+                ? <ClozePassage text={cleanHighlightText(card.highlight_text)} />
+                : <p className="rv-source-text">{cleanHighlightText(card.highlight_text)}</p>
+              }
+              {card.section_title && (
+                <span className="rv-source-meta">{card.section_title}{card.page_number ? ` · p. ${card.page_number}` : ''}</span>
+              )}
+            </div>
+          )}
 
           {error && <div className="rv-error">{error}</div>}
 
@@ -523,6 +552,21 @@ export default function ReviewSession() {
             <span className="rv-correct-label">Correct answer</span>
             <div className="rv-correct-text">{g.expected_answer}</div>
           </div>
+
+          {/* Source passage (step 3: surfaced in Phase 2 for all cards, including
+              action cards where it was suppressed in Phase 1). User already submitted,
+              so this is the "check against the text" moment. */}
+          {card.highlight_text && (
+            <div className="rv-source rv-source--graded">
+              <div className="rv-source-header">
+                <span className="rv-source-label">Source passage</span>
+              </div>
+              <p className="rv-source-text">{cleanHighlightText(card.highlight_text)}</p>
+              {card.section_title && (
+                <span className="rv-source-meta">{card.section_title}{card.page_number ? ` · p. ${card.page_number}` : ''}</span>
+              )}
+            </div>
+          )}
 
           {/* Next review */}
           <div className="rv-next-review rv-muted">
