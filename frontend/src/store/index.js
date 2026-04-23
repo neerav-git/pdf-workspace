@@ -62,7 +62,7 @@ export const useAppStore = create(persist((set, get) => ({
 
   // ── Highlight Index ────────────────────────────────────────────────────────
   // Each entry: { id, pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath,
-  //               deepSectionPath, chunkId, concepts, highlightText, highlightTexts,
+  //               deepSectionPath, chunkId, clusterTag, concepts, highlightText, highlightTexts,
   //               createdAt, starred, flagged, anchored, reviewed, note, synthesis,
   //               qaPairs[] }
   // All writes: POST/PATCH/DELETE to API first → update local state with DB-returned IDs
@@ -75,8 +75,8 @@ export const useAppStore = create(persist((set, get) => ({
       : s.highlightIndex.find((e) => e.pdfId === pdfId && e.highlightText === highlightText)
 
     if (existing) {
-      // Chunk already exists — add new Q&A pair to it; merge concepts + highlight texts
-      const mergedConcepts = [...new Set([...(existing.concepts || []), ...(concepts || [])])]
+      // Chunk already exists — add new Q&A pair to it; backend owns topic/facet
+      // classification now, so we only maintain merged highlight texts locally.
       const existingTexts = existing.highlightTexts || [existing.highlightText]
       const mergedTexts = existingTexts.includes(highlightText) ? existingTexts : [...existingTexts, highlightText]
 
@@ -92,13 +92,12 @@ export const useAppStore = create(persist((set, get) => ({
           selection_text: highlightText,
           origin_chat_message_id: originChatMessageId,
         }, { force })
-        await patchHighlight(existing.id, { concepts: mergedConcepts, highlight_texts: mergedTexts })
+        await patchHighlight(existing.id, { highlight_texts: mergedTexts })
+        const refreshed = await fetchHighlights(pdfId)
         set((s2) => ({
-          highlightIndex: s2.highlightIndex.map((e) =>
-            e.id === existing.id
-              ? { ...e, concepts: mergedConcepts, highlightTexts: mergedTexts, qaPairs: [...e.qaPairs, normalizeQA(qa)] }
-              : e,
-          ),
+          highlightIndex: s2.highlightIndex
+            .filter((e) => e.pdfId !== pdfId)
+            .concat(refreshed.map((row) => normalizeEntry(row, pdfTitle))),
         }))
         return { entryId: existing.id, qaId: qa.id }
       } catch (e) {
@@ -128,7 +127,7 @@ export const useAppStore = create(persist((set, get) => ({
         section_title: sectionTitle || null,
         section_path: sectionPath || [],
         deep_section_path: deepSectionPath || null,
-        concepts: concepts || [],
+        concepts: [],
         note: '',
       })
       const qa = await postQA(createdEntry.id, {
@@ -140,11 +139,11 @@ export const useAppStore = create(persist((set, get) => ({
         selection_text: highlightText,
         origin_chat_message_id: originChatMessageId,
       }, { force })
+      const refreshed = await fetchHighlights(pdfId)
       set((s2) => ({
-        highlightIndex: [
-          { ...normalizeEntry(createdEntry), pdfTitle, qaPairs: [normalizeQA(qa)] },
-          ...s2.highlightIndex,
-        ],
+        highlightIndex: s2.highlightIndex
+          .filter((e) => e.pdfId !== pdfId)
+          .concat(refreshed.map((row) => normalizeEntry(row, pdfTitle))),
       }))
       return { entryId: createdEntry.id, qaId: qa.id }
     } catch (e) {
@@ -485,6 +484,7 @@ function normalizeEntry(row, pdfTitle = null) {
     sectionPath:      row.section_path || [],
     deepSectionPath:  row.deep_section_path || null,
     chunkId:          row.chunk_id || null,
+    clusterTag:       row.cluster_tag || null,
     concepts:         row.concepts || [],
     highlightText:    row.highlight_text,
     highlightTexts:   row.highlight_texts || [row.highlight_text],
@@ -514,6 +514,7 @@ function normalizeQA(row) {
     starred:         row.starred,
     rhetoricalFacet: row.rhetorical_facet || null,
     facetConfidence: row.facet_confidence ?? null,
+    topicTags:       row.topic_tags || [],
     originChatMessageId: row.origin_chat_message_id ?? null,
     // FSRS fields (needed by review session — Research B1)
     stability:       row.stability,

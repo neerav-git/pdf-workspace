@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -7,7 +8,14 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.models.pdf import PDFDocument
-from app.services import s3_service, pdf_service, embedding_service, chroma_service, toc_service
+from app.services import (
+    s3_service,
+    pdf_service,
+    embedding_service,
+    chroma_service,
+    toc_service,
+    ontology_service,
+)
 
 router = APIRouter(prefix="/api/pdfs", tags=["pdfs"])
 
@@ -20,8 +28,23 @@ class PDFResponse(BaseModel):
     s3_key: str
     page_count: int
     chunk_count: int
+    ontology_json: Optional[dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
+
+
+class OntologyResponse(BaseModel):
+    pdf_id: int
+    topics: list[str]
+    cached: bool = False
+
+
+class RecomputeResponse(BaseModel):
+    pdf_id: int
+    ontology_topics: list[str]
+    entry_count: int
+    qa_count: int
+    rewritten_study_questions: int
 
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
@@ -71,6 +94,30 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
 @router.get("", response_model=list[PDFResponse])
 def list_pdfs(db: Session = Depends(get_db)):
     return db.query(PDFDocument).order_by(PDFDocument.created_at.desc()).all()
+
+
+@router.post("/{pdf_id}/ontology", response_model=OntologyResponse)
+def generate_pdf_ontology(pdf_id: int, force: bool = False, db: Session = Depends(get_db)):
+    doc = db.get(PDFDocument, pdf_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="PDF not found.")
+    before = ontology_service.get_pdf_ontology_topics(doc)
+    topics = ontology_service.ensure_pdf_ontology(db, pdf_id, force=force)
+    refreshed = db.get(PDFDocument, pdf_id)
+    cached = bool(before) and before == topics and not force
+    return {
+        "pdf_id": pdf_id,
+        "topics": ontology_service.get_pdf_ontology_topics(refreshed),
+        "cached": cached,
+    }
+
+
+@router.post("/{pdf_id}/recompute-facets-and-concepts", response_model=RecomputeResponse)
+def recompute_facets_and_concepts(pdf_id: int, db: Session = Depends(get_db)):
+    doc = db.get(PDFDocument, pdf_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="PDF not found.")
+    return ontology_service.recompute_pdf_learning_metadata(db, pdf_id)
 
 
 @router.get("/{pdf_id}/url")

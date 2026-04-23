@@ -279,6 +279,22 @@
 .rv-action-terms     { background: #2d1a3a; color: #d8b4fe; }
 .rv-action-summarise { background: #2d2a14; color: #fde68a; }
 
+.rv-facet-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  width: fit-content;
+}
+.rv-facet-badge--objective { background: #143222; color: #7ad6a4; }
+.rv-facet-badge--novelty { background: #3a2410; color: #f2b46b; }
+.rv-facet-badge--method { background: #112a44; color: #86b7ff; }
+.rv-facet-badge--result { background: #3a1717; color: #ff9f9f; }
+.rv-facet-badge--background { background: #23262b; color: #b7bec8; }
+.rv-facet-badge--uncategorized { background: #1e1e1e; color: #8d96a3; }
+
 .rv-question-generic {
   font-size: 15px;
   color: #aaa;

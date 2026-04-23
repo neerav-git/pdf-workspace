@@ -3,7 +3,6 @@ import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../store'
 import { sendMessage } from '../api/chat'
 import { resolveChunk } from '../api/pdfs'
-import { extractConcepts } from '../api/chat'
 import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
 import DuplicateStudyQuestionModal from './DuplicateStudyQuestionModal'
@@ -248,9 +247,6 @@ export default function ChatPanel() {
           .catch(() => null)
       }
 
-      const conceptSeed = candidate.selectionText || primarySource?.text || candidate.question
-      const concepts = await extractConcepts(conceptSeed, candidate.answer).catch(() => [])
-
       const highlightText = candidate.kind === 'selection'
         ? extendToSentenceBoundary(candidate.selectionText, resolved?.chunk_text)
         : (primarySource?.text ? buildChatInsightAnchor(primarySource) : `Chat insight: ${candidate.question}`)
@@ -264,7 +260,7 @@ export default function ChatPanel() {
         sectionPath: candidate.sectionPath,
         deepSectionPath: resolved?.section_path?.length > 0 ? resolved.section_path : null,
         chunkId: resolved?.chunk_id || primarySource?.chunk_id || null,
-        concepts,
+        concepts: [],
         highlightText,
         cardType: candidate.cardType || 'chat',
         question: candidate.question,

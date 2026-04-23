@@ -96,6 +96,7 @@ class DueCardResponse(BaseModel):
     # Canonical standalone study question — review UI prefers this over
     # `question` so it never shows a raw action prompt.
     study_question: Optional[str] = None
+    rhetorical_facet: Optional[str] = None
     answer: str
     source_chunk_ids: list
     state: str
@@ -109,6 +110,7 @@ class DueCardResponse(BaseModel):
     source_passage: Optional[str] = None
     page_number: Optional[int]
     section_title: Optional[str]
+    cluster_tag: Optional[str]
     pdf_id: int
 
     model_config = {"from_attributes": True}
@@ -246,7 +248,7 @@ def get_due_cards(limit: int = 20, db: Session = Depends(get_db)):
     Archived cards are excluded (deep-fix step 2).
     """
     now = datetime.now(timezone.utc)
-    cards = (
+    raw_cards = (
         db.query(QAPair)
         .filter(
             QAPair.due_at <= now,
@@ -254,9 +256,10 @@ def get_due_cards(limit: int = 20, db: Session = Depends(get_db)):
             QAPair.archived_at.is_(None),
         )
         .order_by(QAPair.due_at.asc())
-        .limit(limit)
+        .limit(max(limit * 3, limit))
         .all()
     )
+    cards = _diversify_due_cards(raw_cards, limit)
     return [_qa_to_due_response(qa) for qa in cards]
 
 
@@ -269,7 +272,7 @@ def get_due_cards_for_pdf(pdf_id: int, limit: int = 20, db: Session = Depends(ge
     Archived cards are excluded (deep-fix step 2).
     """
     now = datetime.now(timezone.utc)
-    cards = (
+    raw_cards = (
         db.query(QAPair)
         .join(QAPair.highlight_entry)
         .filter(
@@ -279,9 +282,10 @@ def get_due_cards_for_pdf(pdf_id: int, limit: int = 20, db: Session = Depends(ge
             QAPair.archived_at.is_(None),
         )
         .order_by(QAPair.due_at.asc())
-        .limit(limit)
+        .limit(max(limit * 3, limit))
         .all()
     )
+    cards = _diversify_due_cards(raw_cards, limit)
     return [_qa_to_due_response(qa) for qa in cards]
 
 
@@ -330,6 +334,7 @@ def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
         question         = qa.question,
         original_question = qa.original_question,
         study_question   = qa.study_question,
+        rhetorical_facet = qa.rhetorical_facet,
         answer           = qa.answer,
         source_chunk_ids = qa.source_chunk_ids or [],
         state            = qa.state,
@@ -344,5 +349,40 @@ def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
         source_passage   = source_passage,
         page_number      = h.page_number if h else None,
         section_title    = h.section_title if h else None,
+        cluster_tag      = h.cluster_tag if h else None,
         pdf_id           = h.pdf_id if h else 0,
     )
+
+
+def _section_key(qa: QAPair) -> str:
+    h = qa.highlight_entry
+    if not h:
+        return "__none__"
+    return (h.cluster_tag or h.section_title or f"page:{h.page_number or 0}").strip().lower()
+
+
+def _diversify_due_cards(cards: list[QAPair], limit: int) -> list[QAPair]:
+    if len(cards) <= 2:
+        return cards[:limit]
+
+    remaining = list(cards)
+    ordered: list[QAPair] = []
+    previous_section: str | None = None
+    lookahead = min(len(remaining), max(5, limit))
+    same_section_penalty_seconds = 180
+
+    while remaining and len(ordered) < limit:
+        best_idx = 0
+        best_score: float | None = None
+        for idx, qa in enumerate(remaining[:lookahead]):
+            due_at = qa.due_at or datetime.now(timezone.utc)
+            score = due_at.timestamp()
+            if previous_section and _section_key(qa) == previous_section:
+                score += same_section_penalty_seconds
+            if best_score is None or score < best_score:
+                best_score = score
+                best_idx = idx
+        chosen = remaining.pop(best_idx)
+        ordered.append(chosen)
+        previous_section = _section_key(chosen)
+    return ordered

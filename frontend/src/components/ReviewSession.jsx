@@ -38,6 +38,14 @@ function cleanHighlightText(text) {
 // whether the card defaults to cloze mode. The server owns `card_type`
 // on the qa_pairs row; this is pure display glue.
 const ACTION_CARD_TYPES = new Set(['explain', 'simplify', 'terms', 'summarise', 'quiz'])
+const FACET_META = {
+  objective:     { label: 'Objective', tone: 'objective' },
+  novelty:       { label: 'Novelty', tone: 'novelty' },
+  method:        { label: 'Method', tone: 'method' },
+  result:        { label: 'Result', tone: 'result' },
+  background:    { label: 'Background', tone: 'background' },
+  uncategorized: { label: 'Uncategorized', tone: 'uncategorized' },
+}
 
 // Mirror of _FALLBACK_STUDY_QUESTION in backend/app/services/card_service.py.
 // A card whose study_question equals one of these templates shipped without a
@@ -56,6 +64,10 @@ const FALLBACK_STUDY_QUESTIONS = new Set([
 
 function isFallbackStudyQuestion(text) {
   return FALLBACK_STUDY_QUESTIONS.has((text || '').trim())
+}
+
+function facetMeta(facet) {
+  return FACET_META[facet] || FACET_META.uncategorized
 }
 
 /**
@@ -413,6 +425,7 @@ export default function ReviewSession() {
       terms:     'What are the key terms here and what do they mean?',
       summarise: 'Summarise this passage from memory in 2–3 sentences.',
     }
+    const facet = facetMeta(card.rhetorical_facet || 'uncategorized')
 
     const cardTypeBadge = (() => {
       const t = card.card_type || 'manual'
@@ -433,13 +446,19 @@ export default function ReviewSession() {
           {displayQuestion
             ? (
               <div className="rv-question">
-                {cardTypeBadge && <div className="rv-question-badges">{cardTypeBadge}</div>}
+                <div className="rv-question-badges">
+                  {cardTypeBadge}
+                  <span className={`rv-facet-badge rv-facet-badge--${facet.tone}`}>{facet.label}</span>
+                </div>
                 <span>{displayQuestion}</span>
               </div>
             )
             : (
               <div className="rv-question rv-question--action">
-                {cardTypeBadge}
+                <div className="rv-question-badges">
+                  {cardTypeBadge}
+                  <span className={`rv-facet-badge rv-facet-badge--${facet.tone}`}>{facet.label}</span>
+                </div>
                 <span className="rv-question-generic">
                   {(isAction && actionType && ACTION_PROMPTS[actionType]) || 'What do you recall about this passage?'}
                 </span>

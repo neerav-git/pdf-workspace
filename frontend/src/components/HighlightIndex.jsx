@@ -25,6 +25,19 @@ function cardMeta(cardType) {
   return CARD_TYPE_META[cardType] || CARD_TYPE_META.manual
 }
 
+const FACET_META = {
+  objective:     { label: 'Objective', tone: 'objective' },
+  novelty:       { label: 'Novelty', tone: 'novelty' },
+  method:        { label: 'Method', tone: 'method' },
+  result:        { label: 'Result', tone: 'result' },
+  background:    { label: 'Background', tone: 'background' },
+  uncategorized: { label: 'Uncategorized', tone: 'uncategorized' },
+}
+
+function facetMeta(facet) {
+  return FACET_META[facet] || FACET_META.uncategorized
+}
+
 // Display question for a card.
 //
 // For user-authored cards (manual/chat), we prefer the user's RAW input
@@ -78,7 +91,8 @@ function normalizeSectionPath(entry) {
 
 function getEntrySectionLabel(entry) {
   const path = normalizeSectionPath(entry)
-  return path.length > 0 ? path[path.length - 1].title : null
+  if (path.length > 0) return path[path.length - 1].title
+  return entry.clusterTag || null
 }
 
 function getEntrySectionContext(entry) {
@@ -185,7 +199,7 @@ function groupByHierarchy(entries) {
     // body-size text (no distinct L2 font tier) — e.g. "Description", "Precautions"
     const h2Node = path.find((p) => p.level === 2) || path.find((p) => p.level === 3)
 
-    const h1Key = h1Node?.title || 'Other Passages'
+    const h1Key = h1Node?.title || entry.clusterTag || 'Other Passages'
     const h2Key = h2Node?.title || null
 
     if (!h1Map[h1Key]) {
@@ -437,6 +451,9 @@ export default function HighlightIndex() {
   const pages          = groupByPage(pdfEntries)
   const hierarchy      = groupByHierarchy(pdfEntries)
   const conceptGroups  = groupByConcept(pdfEntries)
+  const facetCount     = new Set(
+    pdfEntries.flatMap((e) => e.qaPairs.map((q) => q.rhetoricalFacet || 'uncategorized')),
+  ).size
   const totalConcepts  = conceptGroups.length
 
   const starredQAs = pdfEntries
@@ -576,6 +593,7 @@ export default function HighlightIndex() {
     const { title, subtitle, type, isAction, derivedQuestion } = getLearningCardLabel(qa, entry)
     const isExpanded = !!expandedQAs[qa.id]
     const [reviewLoading, setReviewLoading] = useState(false)
+    const facet = facetMeta(qa.rhetoricalFacet || 'uncategorized')
 
     // Manual question display: truncate in header; show full text above answer when expanded
     const shortQuestion = title.length > 82 ? title.slice(0, 80) + '…' : title
@@ -618,7 +636,12 @@ export default function HighlightIndex() {
           <div className="idx-qa-label">
             <div className="idx-qa-label-stack">
               <span className="idx-qa-q-text">{shortQuestion}</span>
-              <span className={`idx-qa-context idx-qa-context-${type}`}>{subtitle}</span>
+              <div className="idx-qa-meta-row">
+                <span className={`idx-qa-context idx-qa-context-${type}`}>{subtitle}</span>
+                <span className={`idx-facet-badge idx-facet-badge--${facet.tone}`}>
+                  {facet.label}
+                </span>
+              </div>
               {derivedQuestion && (
                 <span className="idx-qa-derived-question" title={derivedQuestion}>
                   Saved as: {derivedQuestion}
@@ -661,6 +684,11 @@ export default function HighlightIndex() {
               <p className="idx-qa-full-question">{title}</p>
             )}
             {isAction && <p className="idx-qa-full-subtitle">{subtitle}</p>}
+            <div className="idx-qa-facet-line">
+              <span className={`idx-facet-badge idx-facet-badge--${facet.tone}`}>
+                {facet.label}
+              </span>
+            </div>
             {derivedQuestion && (
               <p className="idx-qa-derived-full">Saved as study question: {derivedQuestion}</p>
             )}
@@ -893,8 +921,7 @@ export default function HighlightIndex() {
           className={`idx-view-tab ${view === 'concept' ? 'active' : ''}`}
           onClick={() => { setView('concept'); setActiveConcept(null) }}
         >
-          Concepts
-          {totalConcepts > 0 && <span className="idx-tab-count">{totalConcepts}</span>}
+          Facets {facetCount} · Topics {totalConcepts}
         </button>
         <button
           className={`idx-view-tab ${view === 'starred' ? 'active' : ''}`}

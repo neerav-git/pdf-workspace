@@ -24,9 +24,16 @@ from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
+from app.models.highlight import HighlightEntry
 from app.models.highlight import QAPair
 from app.services.chat_service import prepare_study_card_question
 from app.services.embedding_service import embed
+from app.services.ontology_service import (
+    classify_rhetorical_facet,
+    classify_topics_into_ontology,
+    ensure_pdf_ontology,
+    refresh_highlight_learning_metadata,
+)
 
 
 # Cosine threshold above which two study_questions on the same highlight
@@ -283,6 +290,20 @@ def create_card(
                 similarity=getattr(dup, "_similarity", 1.0),
             )
 
+    highlight = db.get(HighlightEntry, highlight_id)
+    ontology_topics = ensure_pdf_ontology(db, highlight.pdf_id, force=False) if highlight else []
+    rhetorical_facet, facet_confidence = classify_rhetorical_facet(
+        study_question=study_question,
+        answer=answer,
+        selection_text=selection_text,
+    )
+    topic_tags = classify_topics_into_ontology(
+        study_question=study_question,
+        answer=answer,
+        selection_text=selection_text,
+        ontology_topics=ontology_topics,
+    )
+
     qa = QAPair(
         highlight_id=highlight_id,
         card_type=card_type,
@@ -292,9 +313,15 @@ def create_card(
         answer=answer,
         source_chunk_ids=list(source_chunk_ids) if source_chunk_ids else [],
         selection_text=selection_text,
+        rhetorical_facet=rhetorical_facet,
+        facet_confidence=facet_confidence,
+        topic_tags=topic_tags,
         origin_chat_message_id=origin_chat_message_id,
     )
     db.add(qa)
+    db.flush()
+    if highlight is not None:
+        refresh_highlight_learning_metadata(db, highlight.id, ontology_topics=ontology_topics)
     db.commit()
     db.refresh(qa)
     return qa

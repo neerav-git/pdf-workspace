@@ -31,8 +31,12 @@ function fail(msg) {
   if (/arXiv:/i.test(allText)) fail('Taxonomy should not expose arXiv metadata as a section label')
   if (/\bT\d/i.test(allText)) fail('Taxonomy should not expose cryptic table-like labels as section labels')
   if (/Uncategorized/i.test(allText)) fail('Taxonomy should not expose Uncategorized buckets')
-  if (!/Abstract/i.test(allText)) fail('Meaningful academic section labels should remain visible')
-  if (!/Implementation|Term Definitions/i.test(allText)) fail('Meaningful paper structure should remain visible for later sections')
+  if (!/medical literature accessibility|readability barriers|medical jargon|reading comprehension/i.test(allText)) {
+    fail('Taxonomy should expose conceptual cluster labels after step 4')
+  }
+  if (!/Implementation|Term Definitions|INTRODUCTION/i.test(allText)) {
+    fail('Meaningful paper structure should remain visible alongside concept clusters')
+  }
 
   await browser.close()
 })().catch((err) => {

@@ -21,6 +21,7 @@ class HighlightEntry(Base):
     section_path      = Column(JSONB, default=list)       # [{title, level}] from TOC
     deep_section_path = Column(JSONB)                     # body-level, nullable
     concepts          = Column(JSONB, default=list)       # string[] from Haiku
+    cluster_tag       = Column(String(200))
     note              = Column(Text, default="")
     synthesis         = Column(Text)                      # null until generated on demand
     deep_synthesis    = Column(Text)                      # null until user clicks "Dive deeper"
@@ -56,6 +57,7 @@ class QAPair(Base):
     # result | background | uncategorized. NULL until step 4 backfill runs.
     rhetorical_facet = Column(String(16))
     facet_confidence = Column(Float)
+    topic_tags       = Column(JSONB, default=list)
 
     # Provenance link back to the chat message that produced this card (step 5).
     origin_chat_message_id = Column(Integer)

@@ -14,6 +14,7 @@ from app.services.card_service import (
     ExtractionFailed,
     create_card,
 )
+from app.services.ontology_service import refresh_highlight_learning_metadata
 
 router = APIRouter(tags=["highlights"])
 
@@ -33,6 +34,7 @@ class QAPairResponse(BaseModel):
     starred: bool
     rhetorical_facet: Optional[str]
     facet_confidence: Optional[float]
+    topic_tags: list = []
     origin_chat_message_id: Optional[int]
     stability: float
     difficulty: float
@@ -57,6 +59,7 @@ class HighlightResponse(BaseModel):
     section_path: list
     deep_section_path: Optional[list]
     concepts: list
+    cluster_tag: Optional[str]
     note: str
     synthesis: Optional[str]
     deep_synthesis: Optional[str]
@@ -189,8 +192,14 @@ def create_highlight(pdf_id: int, body: HighlightCreate, db: Session = Depends(g
 def patch_highlight(highlight_id: int, body: HighlightPatch, db: Session = Depends(get_db)):
     """Update mutable fields: note, synthesis, starred, flagged, anchored, reviewed, concepts."""
     entry = _get_highlight_or_404(highlight_id, db)
+    touched_structure = False
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(entry, field, value)
+        if field in {"section_title", "section_path", "deep_section_path"}:
+            touched_structure = True
+    if touched_structure:
+        db.flush()
+        refresh_highlight_learning_metadata(db, entry.id)
     db.commit()
     db.refresh(entry)
     return entry

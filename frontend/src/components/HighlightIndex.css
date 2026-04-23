@@ -550,6 +550,13 @@
   text-overflow: ellipsis;
 }
 
+.idx-qa-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .idx-qa-derived-question {
   font-size: 9.5px;
   color: #8b9bb0;
@@ -585,6 +592,28 @@
   color: #8b9bb0;
   margin: 0 0 6px;
 }
+
+.idx-qa-facet-line {
+  margin: 0 0 6px;
+}
+
+.idx-facet-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.idx-facet-badge--objective { background: #143222; color: #7ad6a4; }
+.idx-facet-badge--novelty { background: #3a2410; color: #f2b46b; }
+.idx-facet-badge--method { background: #112a44; color: #86b7ff; }
+.idx-facet-badge--result { background: #3a1717; color: #ff9f9f; }
+.idx-facet-badge--background { background: #23262b; color: #b7bec8; }
+.idx-facet-badge--uncategorized { background: #1e1e1e; color: #8d96a3; }
 
 /* ── Action type badges ───────────────────────────────────────────────────── */
 

@@ -21,6 +21,9 @@ async def lifespan(app: FastAPI):
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS original_question TEXT"))
         conn.execute(text("ALTER TABLE highlight_entries ADD COLUMN IF NOT EXISTS deep_synthesis TEXT"))
+        conn.execute(text("ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS ontology_json JSONB"))
+        conn.execute(text("ALTER TABLE highlight_entries ADD COLUMN IF NOT EXISTS cluster_tag VARCHAR(200)"))
+        conn.execute(text("ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS topic_tags JSONB"))
     # Seed default rubric + prompt versions for grading (Research B4, C4)
     from app.services.grading_service import ensure_default_rubric_version
     db = SessionLocal()
