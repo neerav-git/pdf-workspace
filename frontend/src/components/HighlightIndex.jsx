@@ -6,38 +6,29 @@ import { getRelatedChunks, synthesizeEntry } from '../api/pdfs'
 import { fetchReviewStats, fetchCardReviewData } from '../api/review'
 import './HighlightIndex.css'
 
-// ── Action type detection ─────────────────────────────────────────────────────
-// Maps hover-menu prompt prefixes → { label, type } for badge display.
-// The raw question saved to the index includes the full prompt text
-// (e.g. "Explain this passage in detail:\n\n\"...quoted text...\"").
-// We strip the redundant quoted passage and show only the action label.
+// Card-type → UI metadata. Drives badges, subtitles, and whether the card is
+// treated as an action card (explain/simplify/terms/summarise/quiz) vs a
+// user-authored study question (manual/chat). Server owns the `card_type`
+// column; this is pure display glue.
 
-const ACTION_MAP = [
-  { prefix: 'Explain this passage',           type: 'explain',   label: 'Explain'    },
-  { prefix: 'Explain this in simple',         type: 'simplify',  label: 'Simplify'   },
-  { prefix: 'Identify and define',            type: 'terms',     label: 'Key Terms'  },
-  { prefix: 'Create a quiz question',         type: 'quiz',      label: 'Quiz Me'    },
-  { prefix: 'Summarise this passage',         type: 'summarise', label: 'Summarise'  },
-]
-
-function detectAction(question) {
-  for (const a of ACTION_MAP) {
-    if (question.startsWith(a.prefix)) return a
-  }
-  return { type: 'manual', label: null }
+const CARD_TYPE_META = {
+  manual:    { isAction: false, label: null,         subtitle: 'Study question' },
+  chat:      { isAction: false, label: null,         subtitle: 'Study question' },
+  explain:   { isAction: true,  label: 'Explain',    subtitle: 'Build understanding' },
+  simplify:  { isAction: true,  label: 'Simplify',   subtitle: 'Simplify the idea' },
+  terms:     { isAction: true,  label: 'Key Terms',  subtitle: 'Vocabulary and concepts' },
+  summarise: { isAction: true,  label: 'Summarise',  subtitle: 'High-level summary' },
+  quiz:      { isAction: true,  label: 'Quiz Me',    subtitle: 'Retrieval practice' },
 }
 
-// Returns the display label for a question.
-// For hover-menu actions: returns the action label ("Explain", "Simplify", etc.)
-// For manual questions: returns the question text itself (stripped of any trailing passage quote)
-function getQuestionDisplay(question) {
-  const action = detectAction(question)
-  if (action.label) return { label: action.label, type: action.type, isAction: true }
+function cardMeta(cardType) {
+  return CARD_TYPE_META[cardType] || CARD_TYPE_META.manual
+}
 
-  // Manual question — strip any trailing quoted passage if present
-  const colonQuote = question.indexOf(':\n\n"')
-  const clean = colonQuote > -1 ? question.slice(0, colonQuote) : question
-  return { label: clean, type: 'manual', isAction: false }
+// Display question for a card. Prefers the server-canonicalized study_question,
+// falls back to the raw user input, then to the legacy `question` column.
+function resolveDisplayQuestion(qa) {
+  return qa.studyQuestion || qa.originalQuestion || qa.question || ''
 }
 
 function normalizeQuestionText(text) {
@@ -84,70 +75,30 @@ function getEntrySectionContext(entry) {
   return path.map((p) => p.title).join(' → ')
 }
 
-function extractQuizQuestion(answer) {
-  if (!answer) return null
-  const boldMatch = answer.match(/\*\*[Qq]uestion:\*\*\s*([\s\S]+?)(?:\n\n\*\*[Aa]nswer:|$)/i)
-  if (boldMatch) {
-    const q = boldMatch[1].trim()
-    if (q.length > 5) return q
-  }
-  const plainMatch = answer.match(/^[Qq]uestion:\s*(.+)/m)
-  if (plainMatch) {
-    const q = plainMatch[1].trim()
-    if (q.length > 5) return q
-  }
-  return null
-}
-
 function getLearningCardLabel(qa, entry) {
-  const { label, type, isAction } = getQuestionDisplay(qa.question)
+  const type = qa.cardType || 'manual'
+  const meta = cardMeta(type)
   const section = getEntrySectionLabel(entry)
   const sectionContext = getEntrySectionContext(entry)
   const sectionText = sectionContext || section
+  const subtitle = sectionText ? `${meta.subtitle} · ${sectionText}` : meta.subtitle
 
-  if (type === 'quiz') {
-    return {
-      title: extractQuizQuestion(qa.answer) || 'Practice recall',
-      subtitle: sectionText ? `Retrieval practice · ${sectionText}` : 'Retrieval practice',
-      type,
-      isAction: true,
+  const title = resolveDisplayQuestion(qa) || meta.label || 'Study card'
+
+  // For user-authored cards (manual/chat), if the server canonicalized a
+  // different phrasing than what the user typed, surface both — the raw
+  // input stays visible (generation effect) and the canonical shows as the
+  // "Saved as" caption.
+  let derivedQuestion = null
+  if (!meta.isAction) {
+    const original = qa.originalQuestion?.trim() || null
+    const study = qa.studyQuestion?.trim() || null
+    if (original && study && normalizeQuestionText(original) !== normalizeQuestionText(study)) {
+      derivedQuestion = study
     }
   }
 
-  if (!isAction) {
-    const originalQuestion = qa.originalQuestion?.trim() || null
-    const hasReframedOriginal =
-      originalQuestion && normalizeQuestionText(originalQuestion) !== normalizeQuestionText(label)
-
-    return {
-      title: hasReframedOriginal ? originalQuestion : label,
-      subtitle: sectionText ? `Study question · ${sectionText}` : 'Study question',
-      derivedQuestion: hasReframedOriginal ? label : null,
-      type: 'manual',
-      isAction: false,
-    }
-  }
-
-  const titles = {
-    explain: 'What this passage means',
-    simplify: 'Plain-language takeaway',
-    terms: 'Key terms to remember',
-    summarise: 'Main takeaway',
-  }
-
-  const subtitles = {
-    explain: sectionText ? `Build understanding · ${sectionText}` : 'Build understanding',
-    simplify: sectionText ? `Simplify the idea · ${sectionText}` : 'Simplify the idea',
-    terms: sectionText ? `Vocabulary and concepts · ${sectionText}` : 'Vocabulary and concepts',
-    summarise: sectionText ? `High-level summary · ${sectionText}` : 'High-level summary',
-  }
-
-  return {
-    title: titles[type] || label,
-    subtitle: subtitles[type] || (section ? `Study card · ${section}` : 'Study card'),
-    type,
-    isAction: true,
-  }
+  return { title, subtitle, type, isAction: meta.isAction, derivedQuestion }
 }
 
 function getEntryFocusLabel(entry) {

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.highlight import HighlightEntry, QAPair
 from app.models.pdf import PDFDocument
+from app.services.card_service import VALID_CARD_TYPES, create_card
 
 router = APIRouter(tags=["highlights"])
 
@@ -15,12 +16,17 @@ router = APIRouter(tags=["highlights"])
 class QAPairResponse(BaseModel):
     id: int
     highlight_id: int
+    card_type: str
     question: str
     original_question: Optional[str]
+    study_question: Optional[str]
     answer: str
     source_chunk_ids: list
     selection_text: Optional[str]
     starred: bool
+    rhetorical_facet: Optional[str]
+    facet_confidence: Optional[float]
+    origin_chat_message_id: Optional[int]
     stability: float
     difficulty: float
     reps: int
@@ -83,11 +89,15 @@ class HighlightPatch(BaseModel):
 
 
 class QAPairCreate(BaseModel):
+    # card_type is required — callers (SelectionMenu, chat log, manual Q&A)
+    # must declare intent so the server can canonicalize study_question.
+    card_type: str
     question: str
     original_question: Optional[str] = None
     answer: str
     source_chunk_ids: list = []
     selection_text: Optional[str] = None
+    origin_chat_message_id: Optional[int] = None
 
 
 class QAPairPatch(BaseModel):
@@ -169,12 +179,27 @@ def create_qa_pair(highlight_id: int, body: QAPairCreate, db: Session = Depends(
     Add a Q&A pair to a highlight entry.
     Automatically initializes FSRS card state (new, due immediately).
     FSRS state is inline on qa_pairs — no separate memory_items table (Research B1).
+
+    All creation flows route through ``card_service.create_card`` so that
+    study_question canonicalization happens in exactly one place (deep-fix step 1).
     """
     _get_highlight_or_404(highlight_id, db)
-    qa = QAPair(highlight_id=highlight_id, **body.model_dump())
-    db.add(qa)
-    db.commit()
-    db.refresh(qa)
+    if body.card_type not in VALID_CARD_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid card_type: {body.card_type!r}. Must be one of {sorted(VALID_CARD_TYPES)}",
+        )
+    qa = create_card(
+        db,
+        highlight_id=highlight_id,
+        card_type=body.card_type,
+        question=body.question,
+        answer=body.answer,
+        original_question=body.original_question,
+        source_chunk_ids=body.source_chunk_ids,
+        selection_text=body.selection_text,
+        origin_chat_message_id=body.origin_chat_message_id,
+    )
     return qa
 
 

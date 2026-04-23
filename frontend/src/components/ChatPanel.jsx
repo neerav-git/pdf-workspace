@@ -3,10 +3,15 @@ import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../store'
 import { sendMessage } from '../api/chat'
 import { resolveChunk } from '../api/pdfs'
-import { extractConcepts, prepareStudyCardQuestion } from '../api/chat'
+import { extractConcepts } from '../api/chat'
 import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
 import './ChatPanel.css'
+
+// SelectionMenu action ids that map directly to card_type values on the server.
+// Anything else coming out of chat (plain typed question, with or without a
+// selection) is saved as card_type='chat' — the server canonicalizes study_question.
+const ACTION_CARD_TYPES = new Set(['explain', 'simplify', 'terms', 'summarise', 'quiz'])
 
 /**
  * Extend a partial user selection to the nearest sentence boundary using the
@@ -73,6 +78,9 @@ export default function ChatPanel() {
   const [copiedIdx, setCopiedIdx] = useState(null) // index of message whose copy was just clicked
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  // action id of the pending SelectionMenu action, captured at send time so
+  // the assistant response knows what card_type it should be logged under.
+  const pendingActionRef = useRef(null)
 
   const buildChatInsightAnchor = (source) => {
     if (!source?.text) return ''
@@ -111,14 +119,18 @@ export default function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatHistory, isLoading])
 
-  const buildSaveCandidate = useCallback((question, answer, ctx, data) => {
+  const buildSaveCandidate = useCallback((question, answer, ctx, data, actionId) => {
     if (data.web_search_triggered) return null
     const availableSources = data.sources || []
     if (!ctx && availableSources.length === 0) return null
 
+    // card_type: a SelectionMenu action id wins; everything else is 'chat'.
+    const cardType = ACTION_CARD_TYPES.has(actionId) ? actionId : 'chat'
+
     if (ctx) {
       return {
         kind: 'selection',
+        cardType,
         question,
         answer,
         selectionText: ctx.text,
@@ -132,6 +144,7 @@ export default function ChatPanel() {
     const primarySource = availableSources[0]
     return {
       kind: 'chat',
+      cardType,
       question,
       answer,
       selectionText: buildChatInsightAnchor(primarySource),
@@ -150,6 +163,10 @@ export default function ChatPanel() {
       if (!rawText || !selectedPdf || isLoading) return
 
       const ctx = useAppStore.getState().selectionContext
+      // Capture the pending action id at send time — a subsequent send must
+      // not inherit the card_type of an earlier action.
+      const actionIdAtSend = pendingActionRef.current
+      pendingActionRef.current = null
 
       setInput('')
       clearSelectionContext()
@@ -170,7 +187,7 @@ export default function ChatPanel() {
           sectionTitle: ctx?.sectionTitle,
           mode: isQuick ? 'quick' : null,
         })
-        const saveCandidate = buildSaveCandidate(rawText, data.answer, ctx, data)
+        const saveCandidate = buildSaveCandidate(rawText, data.answer, ctx, data, actionIdAtSend)
         addMessage('assistant', data.answer, {
           sources: data.sources || [],
           webSearchTriggered: data.web_search_triggered,
@@ -213,12 +230,8 @@ export default function ChatPanel() {
         ? extendToSentenceBoundary(candidate.selectionText, resolved?.chunk_text)
         : (primarySource?.text ? buildChatInsightAnchor(primarySource) : `Chat insight: ${candidate.question}`)
 
-      const prepared = await prepareStudyCardQuestion(
-        candidate.question,
-        candidate.answer,
-        highlightText || primarySource?.text || '',
-      ).catch(() => ({ question: candidate.question }))
-
+      // Server canonicalizes study_question via card_service.create_card.
+      // Client sends the raw user question + card_type; no client-side rewrite.
       const saved = await saveToIndex({
         pdfId: selectedPdf.id,
         pdfTitle: selectedPdf.title,
@@ -229,8 +242,9 @@ export default function ChatPanel() {
         chunkId: resolved?.chunk_id || primarySource?.chunk_id || null,
         concepts,
         highlightText,
-        question: prepared.question || candidate.question,
-        originalQuestion: prepared.question && prepared.question !== candidate.question ? candidate.question : null,
+        cardType: candidate.cardType || 'chat',
+        question: candidate.question,
+        originalQuestion: candidate.question,
         answer: candidate.answer,
         sourceChunkIds: candidate.kind === 'selection'
           ? (resolved?.chunk_id ? [resolved.chunk_id] : [])
@@ -283,7 +297,11 @@ export default function ChatPanel() {
         return
       }
 
-      if (action.prompt) { setInput(action.prompt); setTimeout(() => handleSend(action.prompt), 0) }
+      if (action.prompt) {
+        pendingActionRef.current = action.id
+        setInput(action.prompt)
+        setTimeout(() => handleSend(action.prompt), 0)
+      }
     })
     return unsub
   }, [selectedPdf, addNote, clearSelectionContext, handleSend])

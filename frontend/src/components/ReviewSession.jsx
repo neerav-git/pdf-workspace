@@ -28,74 +28,22 @@ function cleanHighlightText(text) {
     .trim()
 }
 
-// ── Action Q&A detection ──────────────────────────────────────────────────────
-// Mirrors ACTION_MAP in HighlightIndex — kept in sync manually.
-// When "Quiz Me" fires from the hover menu, the raw prompt is stored as qa.question.
-// Claude's actual generated question+answer is in qa.answer.
-// For review, we extract the question portion from qa.answer so the user sees
-// a real question, not a prompt string.
-
-const ACTION_PREFIXES = [
-  { prefix: 'Create a quiz question',   type: 'quiz'      },
-  { prefix: 'Explain this passage',     type: 'explain'   },
-  { prefix: 'Explain this in simple',   type: 'simplify'  },
-  { prefix: 'Identify and define',      type: 'terms'     },
-  { prefix: 'Summarise this passage',   type: 'summarise' },
-]
-
-function detectActionType(question) {
-  for (const a of ACTION_PREFIXES) {
-    if (question?.startsWith(a.prefix)) return a.type
-  }
-  return 'manual'
-}
-
-/**
- * For Quiz Me Q&As, try to extract the actual question from Claude's answer.
- * Claude typically formats these as:
- *   **Question:** <question text>\n\n**Answer:** <answer text>
- * Returns null if no structured question can be found — caller shows a generic prompt.
- */
-function extractQuizQuestion(answer) {
-  if (!answer) return null
-  // Markdown bold pattern: **Question:** ... **Answer:**
-  const boldMatch = answer.match(/\*\*[Qq]uestion:\*\*\s*([\s\S]+?)(?:\n\n\*\*[Aa]nswer:|$)/i)
-  if (boldMatch) {
-    const q = boldMatch[1].trim()
-    if (q.length > 5) return q
-  }
-  // Plain pattern: Question: ...
-  const plainMatch = answer.match(/^[Qq]uestion:\s*(.+)/m)
-  if (plainMatch) {
-    const q = plainMatch[1].trim()
-    if (q.length > 5) return q
-  }
-  // Only use the first line as a fallback if it looks like an actual question
-  // (ends with ? or starts with a question word — avoid showing answer text as the question)
-  const firstLine = answer.split('\n').find((l) => l.trim())?.trim()
-  const QUESTION_WORDS = /^(what|who|where|when|why|how|which|describe|explain|name|list)/i
-  if (firstLine && (firstLine.endsWith('?') || QUESTION_WORDS.test(firstLine))) {
-    return firstLine
-  }
-  return null
-}
+// Card-type → action badge metadata. Drives the review header badge +
+// whether the card defaults to cloze mode. The server owns `card_type`
+// on the qa_pairs row; this is pure display glue.
+const ACTION_CARD_TYPES = new Set(['explain', 'simplify', 'terms', 'summarise', 'quiz'])
 
 /**
  * Returns the display question for a review card.
- * - Manual Q&A: return question text directly
- * - Quiz Me: extract question from the answer field
- * - Other actions (explain, simplify, terms, summarise): return null
- *   (caller should show a generic recall prompt instead)
+ * Prefers the server-canonicalized `study_question`; falls back to the raw
+ * user question. If nothing usable is available, caller shows a generic
+ * per-type recall prompt.
  */
 function resolveDisplayQuestion(card) {
-  const type = detectActionType(card.question)
-  if (type === 'manual') return { question: card.question, isAction: false, actionType: null }
-  if (type === 'quiz') {
-    const extracted = extractQuizQuestion(card.answer)
-    return { question: extracted, isAction: true, actionType: 'quiz' }
-  }
-  // explain / simplify / terms / summarise — no specific question to show
-  return { question: null, isAction: true, actionType: type }
+  const type = card.card_type || 'manual'
+  const isAction = ACTION_CARD_TYPES.has(type)
+  const question = card.study_question || card.original_question || card.question || null
+  return { question, isAction, actionType: isAction ? type : null }
 }
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
@@ -416,7 +364,7 @@ export default function ReviewSession() {
     const { question: displayQuestion, isAction, actionType } = resolveDisplayQuestion(card)
 
     // Default mode: quiz cards → detail (cloze), everything else → concept (full)
-    const defaultMode = detectActionType(card.question) === 'quiz' ? 'detail' : 'concept'
+    const defaultMode = (card.card_type || 'manual') === 'quiz' ? 'detail' : 'concept'
     const effectiveMode = reviewMode ?? defaultMode
 
     // Action type labels for the badge shown when we can't show a raw question

@@ -40,10 +40,25 @@ class QAPair(Base):
     highlight_id     = Column(Integer, ForeignKey("highlight_entries.id", ondelete="CASCADE"), nullable=False, index=True)
     question         = Column(Text, nullable=False)
     original_question = Column(Text)
+    # Canonical standalone study question. Server-derived at card creation so
+    # consumers can display/dedupe without re-parsing action-prefix strings.
+    study_question    = Column(Text)
     answer           = Column(Text, nullable=False)
     source_chunk_ids = Column(JSONB, default=list)   # ChromaDB IDs; resolve at review time
     selection_text   = Column(Text)                  # the specific text selected when this QA was created
     starred          = Column(Boolean, default=False)
+
+    # Card-type contract (deep-fix step 1). Values: manual | explain | simplify |
+    # terms | summarise | quiz | chat. Drives review UI + dedup semantics.
+    card_type        = Column(String(16), nullable=False, default="manual")
+
+    # SCIM D2 rhetorical facet (deep-fix step 4). objective | novelty | method |
+    # result | background | uncategorized. NULL until step 4 backfill runs.
+    rhetorical_facet = Column(String(16))
+    facet_confidence = Column(Float)
+
+    # Provenance link back to the chat message that produced this card (step 5).
+    origin_chat_message_id = Column(Integer)
 
     # FSRS state inline (Research B1: no separate memory_items table)
     stability        = Column(Float, default=0.0)

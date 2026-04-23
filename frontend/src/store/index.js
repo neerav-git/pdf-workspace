@@ -66,7 +66,7 @@ export const useAppStore = create(persist((set, get) => ({
   // All writes: POST/PATCH/DELETE to API first → update local state with DB-returned IDs
   highlightIndex: [],
 
-  saveToIndex: async ({ pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath, deepSectionPath, chunkId, concepts, highlightText, question, originalQuestion = null, answer, sourceChunkIds = [] }) => {
+  saveToIndex: async ({ pdfId, pdfTitle, pageNumber, sectionTitle, sectionPath, deepSectionPath, chunkId, concepts, highlightText, cardType = 'manual', question, originalQuestion = null, answer, sourceChunkIds = [], originChatMessageId = null }) => {
     const s = get()
     const existing = chunkId
       ? s.highlightIndex.find((e) => e.pdfId === pdfId && e.chunkId === chunkId)
@@ -81,12 +81,15 @@ export const useAppStore = create(persist((set, get) => ({
       try {
         // Create QA in DB; pass selection_text so review shows the right source passage
         // when this QA is merged into an entry with a different primary highlight_text.
+        // card_type declares which action produced this card; server derives study_question.
         const qa = await postQA(existing.id, {
+          card_type: cardType,
           question,
           original_question: originalQuestion,
           answer,
           source_chunk_ids: sourceChunkIds,
           selection_text: highlightText,
+          origin_chat_message_id: originChatMessageId,
         })
         // Patch highlight with merged concepts/texts
         await patchHighlight(existing.id, { concepts: mergedConcepts, highlight_texts: mergedTexts })
@@ -119,11 +122,13 @@ export const useAppStore = create(persist((set, get) => ({
         note: '',
       })
       const qa = await postQA(entry.id, {
+        card_type: cardType,
         question,
         original_question: originalQuestion,
         answer,
         source_chunk_ids: sourceChunkIds,
         selection_text: highlightText,
+        origin_chat_message_id: originChatMessageId,
       })
       set((s2) => ({
         highlightIndex: [
@@ -413,13 +418,18 @@ function normalizeEntry(row, pdfTitle = null) {
 function normalizeQA(row) {
   return {
     id:              row.id,
+    cardType:        row.card_type || 'manual',
     question:        row.question,
     originalQuestion: row.original_question || null,
+    studyQuestion:   row.study_question || null,
     answer:          row.answer,
     source_chunk_ids: row.source_chunk_ids || [],
     sourceChunkIds:  row.source_chunk_ids || [],
     selectionText:   row.selection_text || null,
     starred:         row.starred,
+    rhetoricalFacet: row.rhetorical_facet || null,
+    facetConfidence: row.facet_confidence ?? null,
+    originChatMessageId: row.origin_chat_message_id ?? null,
     // FSRS fields (needed by review session — Research B1)
     stability:       row.stability,
     difficulty:      row.difficulty,

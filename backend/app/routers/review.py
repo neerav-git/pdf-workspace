@@ -73,7 +73,12 @@ class SubmitReviewResponse(BaseModel):
 class DueCardResponse(BaseModel):
     id: int
     highlight_id: int
+    card_type: str
     question: str
+    original_question: Optional[str] = None
+    # Canonical standalone study question — review UI prefers this over
+    # `question` so it never shows a raw action prompt.
+    study_question: Optional[str] = None
     answer: str
     source_chunk_ids: list
     state: str
@@ -278,7 +283,10 @@ def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
     return DueCardResponse(
         id               = qa.id,
         highlight_id     = qa.highlight_id,
+        card_type        = qa.card_type or "manual",
         question         = qa.question,
+        original_question = qa.original_question,
+        study_question   = qa.study_question,
         answer           = qa.answer,
         source_chunk_ids = qa.source_chunk_ids or [],
         state            = qa.state,

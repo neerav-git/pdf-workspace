@@ -22,12 +22,3 @@ export const extractConcepts = (highlightText, answer) =>
     .post('/chat/extract-concepts', { highlight_text: highlightText, answer })
     .then((r) => r.data.concepts || [])
     .catch(() => [])
-
-export const prepareStudyCardQuestion = (question, answer, sourceText = '') =>
-  client
-    .post('/chat/prepare-study-card', {
-      question,
-      answer,
-      source_text: sourceText,
-    })
-    .then((r) => r.data)
