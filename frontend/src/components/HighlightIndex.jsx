@@ -25,10 +25,22 @@ function cardMeta(cardType) {
   return CARD_TYPE_META[cardType] || CARD_TYPE_META.manual
 }
 
-// Display question for a card. Prefers the server-canonicalized study_question,
-// falls back to the raw user input, then to the legacy `question` column.
+// Display question for a card.
+//
+// For user-authored cards (manual/chat), we prefer the user's RAW input
+// (originalQuestion) — that's what they typed, and it's what they'll remember
+// typing when searching the index. The Haiku-rewritten studyQuestion appears
+// as the "Saved as:" caption beneath so both are visible (generation effect).
+//
+// For action cards (explain/simplify/terms/summarise/quiz), the user never
+// authored a question — the canonical studyQuestion IS the authoritative
+// phrasing and should be the title.
 function resolveDisplayQuestion(qa) {
-  return qa.studyQuestion || qa.originalQuestion || qa.question || ''
+  const type = qa.cardType || 'manual'
+  if (type === 'manual' || type === 'chat') {
+    return qa.originalQuestion || qa.studyQuestion || qa.question || ''
+  }
+  return qa.studyQuestion || qa.question || qa.originalQuestion || ''
 }
 
 function normalizeQuestionText(text) {
@@ -243,7 +255,9 @@ function relativeTime(isoString) {
 // ── SynthesisDisplay — collapsible synthesis block ───────────────────────────
 
 function SynthesisDisplay({ entry, runSynthesis, runDeepSynthesis, clearDeepSynthesis, deepSynthesis, deepLoading }) {
-  const [collapsed, setCollapsed] = useState(false)
+  // Default collapsed so the entry body stays compact — synthesis is a
+  // large block and dominates the layout when expanded by default.
+  const [collapsed, setCollapsed] = useState(true)
   return (
     <div className="idx-synthesis-wrap" onClick={(e) => e.stopPropagation()}>
       <div className="idx-synthesis-block">
@@ -345,11 +359,13 @@ export default function HighlightIndex() {
 
   const pdfEntries = highlightIndex.filter((e) => e.pdfId === selectedPdf?.id)
 
-  // Default entries open
+  // Default entries collapsed — an index with 20+ passages is unreadable when
+  // everything is expanded. Click an entry to open it; focused-from-chat flow
+  // still auto-opens its target (see indexFocus effect below).
   useEffect(() => {
     setOpenEntries((prev) => {
       const next = { ...prev }
-      for (const e of pdfEntries) if (!(e.id in next)) next[e.id] = true
+      for (const e of pdfEntries) if (!(e.id in next)) next[e.id] = false
       return next
     })
   }, [pdfEntries.length])
@@ -913,7 +929,7 @@ export default function HighlightIndex() {
 
               {/* Highlight entries */}
               {items.map((entry) => {
-                const isOpen   = openEntries[entry.id] !== false
+                const isOpen   = openEntries[entry.id] === true
                 const isFocused = entry.id === focusedEntryId
                 const qaCount  = entry.qaPairs.length
                 const sectionLabel = getEntrySectionLabel(entry)
@@ -1078,7 +1094,7 @@ export default function HighlightIndex() {
                       .slice()
                       .sort((a, b) => a.pageNumber - b.pageNumber)
                       .map((entry) => {
-                        const isOpen    = openEntries[entry.id] !== false
+                        const isOpen    = openEntries[entry.id] === true
                         const isFocused = entry.id === focusedEntryId
                         const qaCount   = entry.qaPairs.length
                         const sectionLabel = getEntrySectionLabel(entry)
@@ -1277,7 +1293,7 @@ export default function HighlightIndex() {
                     .slice()
                     .sort((a, b) => a.pageNumber - b.pageNumber)
                     .map((entry) => {
-                      const isOpen    = openEntries[entry.id] !== false
+                      const isOpen    = openEntries[entry.id] === true
                       const isFocused = entry.id === focusedEntryId
                       const qaCount   = entry.qaPairs.length
                       const sectionLabel = getEntrySectionLabel(entry)

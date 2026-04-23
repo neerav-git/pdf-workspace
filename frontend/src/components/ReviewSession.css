@@ -144,6 +144,25 @@
   border-radius: 3px;
 }
 
+/* Neutral variant — used when the passage is shown because the card's
+   prompt is generic (recall_mode='required'). Not a penalty, just a label
+   indicating the passage is part of the card's context. */
+.rv-reveal-flag--required {
+  color: #7a8fa8;
+  background: #121a24;
+}
+
+/* Matching treatment for the source panel when in 'required' mode — neutral
+   slate instead of orange assisted. Reuses rv-source--graded's tonal palette. */
+.rv-source--required {
+  background: #0f1720;
+  border-color: #1f2e3c;
+  border-left-color: #4a7a9a;
+}
+.rv-source--required .rv-source-label { color: #6a94b4; }
+.rv-source--required .rv-source-text  { color: #b0c4d4; }
+.rv-source--required .rv-source-meta  { color: #4a6a80; }
+
 .rv-reveal-toggle {
   display: inline-flex;
   gap: 4px;
@@ -264,6 +283,28 @@
   font-size: 15px;
   color: #aaa;
   font-style: italic;
+}
+
+/* Passage-location cue — shown beneath the question in Phase 1 so the user
+   knows which passage is being tested without revealing its content. */
+.rv-location-cue {
+  font-size: 12px;
+  color: #8b949e;
+  letter-spacing: 0.02em;
+  margin-top: -4px;
+}
+
+/* Fallback-template hint — appears when study_question is one of the generic
+   per-type templates (card shipped without a specific prompt). Points the
+   user at the reveal affordance below. */
+.rv-fallback-hint {
+  font-size: 12px;
+  color: #c8841a;
+  background: #1a150a;
+  border: 1px solid #3a2e1a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  line-height: 1.45;
 }
 
 /* ── Confidence rating ───────────────────────────────────────────────────────── */

@@ -38,7 +38,16 @@ router = APIRouter(tags=["review"])
 
 # ── Request / Response schemas ────────────────────────────────────────────────
 
-VALID_RECALL_MODES = {"free_recall", "cloze", "assisted"}
+# Recall mode telemetry.
+#   free_recall  — user answered from memory, passage hidden (primary-claim cohort).
+#   cloze        — user revealed passage with ~30% of words masked.
+#   assisted     — user chose to reveal the full passage on a specific-prompt card.
+#   required     — passage was shown by default because the card's study_question is
+#                  a generic fallback template (e.g. "How would you explain this in
+#                  plain language?"). The card is literally unanswerable without the
+#                  passage, so this is NOT user-initiated assistance. Research export
+#                  should analyze these separately from both free_recall and assisted.
+VALID_RECALL_MODES = {"free_recall", "cloze", "assisted", "required"}
 
 
 class SubmitReviewRequest(BaseModel):

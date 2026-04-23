@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../store'
 import { sendMessage } from '../api/chat'
@@ -7,6 +7,7 @@ import { extractConcepts } from '../api/chat'
 import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
 import DuplicateStudyQuestionModal from './DuplicateStudyQuestionModal'
+import { linkifyPageCitations } from '../utils/linkifyPages'
 import './ChatPanel.css'
 
 // SelectionMenu action ids that map directly to card_type values on the server.
@@ -82,6 +83,26 @@ export default function ChatPanel() {
   const [duplicatePrompt, setDuplicatePrompt] = useState(null)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+
+  // ReactMarkdown component overrides that make inline page citations (e.g.
+  // "p. 9", "page 16") clickable buttons. Recursion handles nested markdown
+  // like **bold p. 9**. Stable memo so markdown-render doesn't thrash.
+  const markdownComponents = useMemo(() => {
+    const wrap = (Tag) => ({ children, node, ...props }) => (
+      <Tag {...props}>{linkifyPageCitations(children, setCurrentPage)}</Tag>
+    )
+    return {
+      p:  wrap('p'),
+      li: wrap('li'),
+      strong: wrap('strong'),
+      em: wrap('em'),
+      h1: wrap('h1'),
+      h2: wrap('h2'),
+      h3: wrap('h3'),
+      h4: wrap('h4'),
+      blockquote: wrap('blockquote'),
+    }
+  }, [setCurrentPage])
   // action id of the pending SelectionMenu action, captured at send time so
   // the assistant response knows what card_type it should be logged under.
   const pendingActionRef = useRef(null)
@@ -450,7 +471,7 @@ export default function ChatPanel() {
                 )}
                 <div className="message-bubble-wrap">
                   {msg.role === 'assistant'
-                    ? <div className="message-bubble"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                    ? <div className="message-bubble"><ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown></div>
                     : <div className="message-bubble">{msg.content}</div>}
                   {msg.role === 'assistant' && (
                     <button

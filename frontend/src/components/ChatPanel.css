@@ -344,6 +344,26 @@
 .message-assistant .message-bubble ol { margin: 4px 0 8px 18px; padding: 0; }
 .message-assistant .message-bubble li { margin-bottom: 2px; }
 .message-assistant .message-bubble strong { color: #e5e5e5; }
+
+/* Inline page citation — rendered inside markdown paragraphs so it flows with
+   the surrounding text. Click → PDFViewer jumps to that page. */
+.inline-page-link {
+  display: inline;
+  background: transparent;
+  border: none;
+  padding: 0 1px;
+  margin: 0;
+  font: inherit;
+  color: #5ea1ff;
+  cursor: pointer;
+  border-bottom: 1px dotted rgba(94, 161, 255, 0.45);
+  transition: color .12s, border-color .12s, background .12s;
+}
+.inline-page-link:hover {
+  color: #8cbcff;
+  border-bottom-color: #8cbcff;
+  background: rgba(94, 161, 255, 0.08);
+}
 .message-assistant .message-bubble code {
   background: #1a1a1a;
   border: 1px solid #333;

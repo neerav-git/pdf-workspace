@@ -39,6 +39,25 @@ function cleanHighlightText(text) {
 // on the qa_pairs row; this is pure display glue.
 const ACTION_CARD_TYPES = new Set(['explain', 'simplify', 'terms', 'summarise', 'quiz'])
 
+// Mirror of _FALLBACK_STUDY_QUESTION in backend/app/services/card_service.py.
+// A card whose study_question equals one of these templates shipped without a
+// specific prompt (Haiku rewrite fell through on older cards). These cards
+// give the user ZERO retrieval cue on their own, so Phase 1 must (a) surface
+// the passage location as a cue, and (b) allow reveal-on-demand even for
+// action cards.
+const FALLBACK_STUDY_QUESTIONS = new Set([
+  'What does this passage mean in your own words?',
+  'How would you explain this in plain language, without jargon?',
+  'What are the key terms here and what do they mean?',
+  'Summarise this passage from memory in 2–3 sentences.',
+  'What does this passage test you on?',
+  'What is the key point of this passage?',
+])
+
+function isFallbackStudyQuestion(text) {
+  return FALLBACK_STUDY_QUESTIONS.has((text || '').trim())
+}
+
 /**
  * Returns the display question for a review card.
  * Prefers the server-canonicalized `study_question`; falls back to the raw
@@ -184,11 +203,23 @@ export default function ReviewSession() {
   //   'hidden'    — source panel not shown. recall_mode → 'free_recall'.
   //   'cloze'     — source panel shown with ~30% masked. recall_mode → 'cloze'.
   //   'assisted'  — full source text shown. recall_mode → 'assisted'.
-  // Any transition away from 'hidden' flips reveal_used to true on the review_log row.
+  //   'required'  — full passage shown by default because the card's study_question
+  //                 is a generic fallback template (card is unanswerable without it).
+  //                 recall_mode → 'required'. This is not user-initiated assistance.
+  // Any state other than 'hidden' also sets reveal_used=true, but the research
+  // export uses recall_mode to distinguish assisted from required.
   const [revealState, setRevealState] = useState('hidden')
 
   const cardShownAt = useRef(null)
   const textareaRef = useRef(null)
+
+  // Initial reveal state for a card. Generic-prompt cards (fallback study_question)
+  // cannot be answered without the passage, so default to 'required' — passage
+  // visible, recall_mode='required', no "assisted" framing in the UI.
+  const initialRevealStateFor = (c) =>
+    c && isFallbackStudyQuestion(c.study_question) && c.highlight_text
+      ? 'required'
+      : 'hidden'
 
   // Load cards on mount — either pre-loaded or fetched by scope
   useEffect(() => {
@@ -198,6 +229,7 @@ export default function ReviewSession() {
         setPhase('empty')
       } else {
         setCards(reviewScope.cards)
+        setRevealState(initialRevealStateFor(reviewScope.cards[0]))
         setPhase('recall')
         cardShownAt.current = Date.now()
       }
@@ -210,6 +242,7 @@ export default function ReviewSession() {
           setPhase('empty')
         } else {
           setCards(data)
+          setRevealState(initialRevealStateFor(data[0]))
           setPhase('recall')
           cardShownAt.current = Date.now()
         }
@@ -233,9 +266,12 @@ export default function ReviewSession() {
     setError(null)
     const latency = cardShownAt.current ? Date.now() - cardShownAt.current : null
     // revealState → recall_mode enum on the server. reveal_used is any non-hidden state.
-    const recallMode = revealState === 'hidden' ? 'free_recall'
-                      : revealState === 'cloze' ? 'cloze'
-                      : 'assisted'
+    // 'required' flags cards whose passage was shown by default (generic prompt);
+    // those are not user-initiated assistance and are analyzed separately.
+    const recallMode = revealState === 'hidden'  ? 'free_recall'
+                     : revealState === 'cloze'   ? 'cloze'
+                     : revealState === 'required' ? 'required'
+                     : 'assisted'
     try {
       const result = await submitReview({
         qa_pair_id: card.id,
@@ -263,10 +299,12 @@ export default function ReviewSession() {
       setRecallText('')
       setConfidence(0)
       setGradeResult(null)
-      setRevealState('hidden') // reset to hidden source on every card (step 3 default)
+      // Reset to the appropriate default for the NEXT card — hidden for
+      // specific prompts, 'required' (passage visible) for fallback prompts.
+      setRevealState(initialRevealStateFor(cards[next]))
       setPhase('recall')
     }
-  }, [idx, cards.length])
+  }, [idx, cards])
 
   // Keyboard: Ctrl+Enter to submit in recall phase
   const handleKeyDown = (e) => {
@@ -348,11 +386,23 @@ export default function ReviewSession() {
     const canSubmit = recallText.trim().length > 0 && confidence > 0 && !submitting
     const { question: displayQuestion, isAction, actionType } = resolveDisplayQuestion(card)
 
+    // A card whose study_question is one of the generic fallback templates
+    // (shipped when Haiku couldn't derive a specific prompt) carries no
+    // retrieval cue at all — the user literally cannot answer "Explain this
+    // in plain language" without knowing what "this" is. Treat those as
+    // non-action cards for the reveal affordance: the user may reveal the
+    // passage, and reveal_used=true will keep them out of the free-recall
+    // retention cohort.
+    const studyQuestionIsFallback = isFallbackStudyQuestion(card.study_question)
+
     // Action cards (explain/simplify/terms/summarise) derive meaning from the passage
     // itself — showing it in Phase 1 would defeat the point. Those cards never offer
     // a reveal; the passage appears only in Phase 2. Manual/quiz/chat cards allow
     // reveal-on-demand with the reveal_used flag logged.
-    const allowReveal = !isAction
+    //
+    // Exception: fallback-template cards (see studyQuestionIsFallback) must
+    // allow reveal regardless of card_type — the prompt alone gives no cue.
+    const allowReveal = !isAction || studyQuestionIsFallback
 
     const ACTION_LABELS = {
       explain: 'Explain', simplify: 'Simplify', terms: 'Key Terms', summarise: 'Summarise',
@@ -397,6 +447,28 @@ export default function ReviewSession() {
             )
           }
 
+          {/* Passage location cue — page + section. This is metadata, not
+              passage content, so it doesn't violate recall-first. It lets the
+              user distinguish "the passage on p. 7 about alternative medicine"
+              from "the passage on p. 48 about acromegaly" before recall. */}
+          {(card.page_number || card.section_title) && (
+            <div className="rv-location-cue">
+              {card.page_number ? `p. ${card.page_number}` : ''}
+              {card.page_number && card.section_title ? ' · ' : ''}
+              {card.section_title || ''}
+            </div>
+          )}
+
+          {/* Fallback-template hint: shown only when the card has a generic
+              prompt but no passage (edge case — without highlight_text we
+              can't auto-show it, so we explain what's going on). */}
+          {studyQuestionIsFallback && !card.highlight_text && (
+            <div className="rv-fallback-hint">
+              This card was saved without a specific question. Answer from memory
+              as best you can.
+            </div>
+          )}
+
           {/* Confidence + recall — both submitted together (Research D2) */}
           <ConfidenceRating value={confidence} onChange={setConfidence} />
 
@@ -413,27 +485,32 @@ export default function ReviewSession() {
             <div className="rv-recall-hint">⌘↵ to submit</div>
           </div>
 
-          {/* Reveal affordance — only for non-action cards. Any click flips
-              reveal_used for this review_log row. */}
-          {allowReveal && card.highlight_text && revealState === 'hidden' && (
+          {/* Reveal affordance — only for non-action cards with a specific
+              prompt. Any click flips reveal_used for this review_log row. */}
+          {allowReveal && !studyQuestionIsFallback && card.highlight_text && revealState === 'hidden' && (
             <div className="rv-reveal-controls">
               <button
                 type="button"
                 className="rv-reveal-btn"
                 onClick={() => setRevealState('cloze')}
-                title="Counts as assisted — recall credit is adjusted in the research export"
+                title="Seeing the passage before answering is recorded as assisted recall"
               >
-                ▸ Reveal passage (counts as assisted)
+                ▸ Reveal passage
               </button>
             </div>
           )}
 
           {allowReveal && card.highlight_text && revealState !== 'hidden' && (
-            <div className="rv-source rv-source--reveal">
+            <div className={`rv-source rv-source--reveal${studyQuestionIsFallback ? ' rv-source--required' : ''}`}>
               <div className="rv-source-header">
                 <span className="rv-source-label">
                   Source passage
-                  <span className="rv-reveal-flag">assisted</span>
+                  {!studyQuestionIsFallback && (
+                    <span className="rv-reveal-flag">assisted</span>
+                  )}
+                  {studyQuestionIsFallback && (
+                    <span className="rv-reveal-flag rv-reveal-flag--required">context</span>
+                  )}
                 </span>
                 <div className="rv-reveal-toggle">
                   <button
@@ -442,13 +519,13 @@ export default function ReviewSession() {
                     onClick={() => setRevealState('cloze')}
                     title="Hide ~30% of content words — you must still produce them"
                   >
-                    Cloze
+                    Masked
                   </button>
                   <button
                     type="button"
-                    className={`rv-reveal-opt ${revealState === 'assisted' ? 'rv-reveal-opt--active' : ''}`}
-                    onClick={() => setRevealState('assisted')}
-                    title="Show full passage (maximum assistance)"
+                    className={`rv-reveal-opt ${(revealState === 'assisted' || revealState === 'required') ? 'rv-reveal-opt--active' : ''}`}
+                    onClick={() => setRevealState(studyQuestionIsFallback ? 'required' : 'assisted')}
+                    title="Show full passage"
                   >
                     Full passage
                   </button>
