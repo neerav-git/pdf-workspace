@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Workspace — Code Breakdown Manual</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0.62in;
+    }
+    :root {
+      --bg: #f6f4ef;
+      --panel: #ffffff;
+      --ink: #171717;
+      --muted: #4f5961;
+      --line: #d6dbd4;
+      --blue: #143d60;
+      --blue-soft: #eaf2f8;
+      --green-soft: #eef5ef;
+      --amber-soft: #faf4e8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Georgia", "Times New Roman", serif;
+      line-height: 1.42;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      min-height: 10.72in;
+      page-break-after: always;
+      padding: 0.02in 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .page:last-child { page-break-after: auto; }
+    .eyebrow {
+      color: var(--blue);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.16in;
+    }
+    h1, h2, h3 {
+      margin: 0 0 0.12in;
+      line-height: 1.14;
+    }
+    h1 { font-size: 23pt; }
+    h2 { font-size: 18pt; color: var(--blue); }
+    h3 { font-size: 11.3pt; color: var(--blue); margin-top: 0.15in; }
+    p, li, td, th { font-size: 10.2pt; }
+    p { margin: 0 0 0.11in; }
+    ul { margin: 0.04in 0 0.12in 0.18in; padding: 0; }
+    li { margin: 0 0 0.05in; }
+    code {
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      font-size: 9pt;
+      background: #f1f3f5;
+      padding: 0.01in 0.03in;
+      border-radius: 5px;
+    }
+    .hero, .panel, .callout, .note {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 0.17in 0.18in;
+    }
+    .hero {
+      background:
+        linear-gradient(180deg, rgba(20, 61, 96, 0.08), rgba(20, 61, 96, 0)),
+        #fff;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.18in;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.12in;
+    }
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 0.12in;
+    }
+    .mini strong {
+      display: block;
+      color: var(--blue);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9.2pt;
+      margin-bottom: 0.05in;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .flow {
+      white-space: pre-wrap;
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      font-size: 8.9pt;
+      background: #fbfbfb;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.15in;
+      line-height: 1.34;
+    }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .table th, .table td {
+      text-align: left;
+      vertical-align: top;
+      padding: 0.07in 0.05in;
+      border-bottom: 1px solid var(--line);
+    }
+    .table tr:last-child td { border-bottom: none; }
+    .callout {
+      background: var(--blue-soft);
+    }
+    .note {
+      background: var(--green-soft);
+    }
+    .warning {
+      background: var(--amber-soft);
+      border: 1px solid #e0cfab;
+      border-radius: 14px;
+      padding: 0.14in 0.17in;
+    }
+    .footer {
+      margin-top: auto;
+      padding-top: 0.12in;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8.5pt;
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="hero">
+      <div class="eyebrow">Developer Re-entry Manual</div>
+      <h1>PDF Workspace: Code Breakdown and Maintenance Guide</h1>
+      <p>
+        This document explains how the codebase is organized, how the major modules work together, and which invariants matter when extending the system. It is intended both as a code breakdown for external review and as an internal manual for resuming work without destabilizing key learning flows.
+      </p>
+
+      <div class="grid-2" style="margin-top:0.18in;">
+        <div class="panel">
+          <h3>What this app is in code terms</h3>
+          <p>
+            The repository is a full-stack research-reading system. The frontend is a React workspace shell with a PDF reader, HUD panels, and full-page study workspaces. The backend is a FastAPI service with persistent models for PDFs, highlights, study cards, review logs, and research sessions. ChromaDB stores retrieval chunks, S3 stores source files, and Claude powers reasoning-heavy operations.
+          </p>
+        </div>
+        <div class="callout">
+          <h3>How to think about the system</h3>
+          <p>
+            The safest mental model is a pipeline:
+          </p>
+          <div class="flow">PDF upload
+→ chunking + embeddings + storage
+→ reading and selection
+→ chat / save-to-index
+→ highlight entry + QA cards
+→ review queue + grading + FSRS
+→ research session organization
+→ comparative analysis</div>
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top:0.16in;">
+        <div class="mini"><strong>Shell</strong>Top bar controls workspace mode. Reader keeps HUD. Index, Review, and Compare mount full-page workspaces.</div>
+        <div class="mini"><strong>State</strong>Zustand is the application spine. It holds selected PDF, sessions, highlight index, chat state, and review mode.</div>
+        <div class="mini"><strong>Persistence</strong>Postgres is the source of truth for PDFs, highlights, QAs, sessions, and review logs.</div>
+        <div class="mini"><strong>Retrieval</strong>ChromaDB anchors user interactions back to chunk-level source evidence.</div>
+        <div class="mini"><strong>Study</strong>Review logic uses LLM grading plus FSRS. This is one of the most breakage-sensitive areas.</div>
+        <div class="mini"><strong>Analysis</strong>Comparative analysis sits above sessions and depends on both PDFs and user-generated artifacts.</div>
+      </div>
+
+      <div class="footer">Page 1 — Orientation and system model</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">1. Application Shell and Frontend Composition</div>
+    <h2>How the UI is assembled</h2>
+    <p>
+      The top-level frontend entry is <code>frontend/src/App.jsx</code>. This file defines the shell contract for the app: there are four workspace modes, <code>reader</code>, <code>index</code>, <code>compare</code>, and <code>review</code>. The reader mode is the default interactive mode and mounts three major columns: <code>PDFSidebar</code>, <code>PDFViewer</code>, and <code>ChatPanel</code>.
+    </p>
+
+    <table class="table">
+      <tr><th style="width:26%;">File</th><th>Role in the larger scheme</th></tr>
+      <tr><td><code>App.jsx</code></td><td>Defines workspace shell, top navigation tabs, and the split between Reader mode and full-page workspaces.</td></tr>
+      <tr><td><code>PDFSidebar.jsx</code></td><td>Left navigation and session organizer. Owns upload entry point, session management modal flow, and session-first PDF selection.</td></tr>
+      <tr><td><code>PDFViewer.jsx</code></td><td>Main document surface. Connects page rendering, TOC navigation, highlight overlays, and the jump back from index/review to source.</td></tr>
+      <tr><td><code>ChatPanel.jsx</code></td><td>Reader-side conversational assistant. Also acts as an interaction bridge into indexing and comparison.</td></tr>
+      <tr><td><code>WorkspaceIndex.jsx</code></td><td>Full-page index workspace using session and PDF navigation, currently reusing the same underlying index data as the HUD.</td></tr>
+      <tr><td><code>WorkspaceReview.jsx</code></td><td>Full-page review queue organizer for sessions and papers, while the actual recall/grading flow still uses the review overlay.</td></tr>
+      <tr><td><code>WorkspaceCompare.jsx</code></td><td>Full-page comparative analysis workspace driven by session-level analysis data.</td></tr>
+      <tr><td><code>ReviewSession.jsx</code></td><td>Dedicated modal/full-screen review flow that runs during active study.</td></tr>
+    </table>
+
+    <div class="note" style="margin-top:0.16in;">
+      <h3>Important composition rule</h3>
+      <p>
+        The HUD and the full-page workspaces are related but not identical. The HUD is for in-reading interaction. The full-page tabs are intended to become more structured deep-dive views. When modifying them, do not assume the panel and full-page versions should always share identical presentation logic.
+      </p>
+    </div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>Do not break this:</strong>
+      <p style="margin-top:0.07in;">
+        <code>reader</code> mode is the integration point where PDF viewing, side HUD, and session context all coexist. A change that works in a full-page workspace but breaks the tri-pane reader layout will usually damage the actual user flow more than it appears.
+      </p>
+    </div>
+
+    <div class="footer">Page 2 — Frontend shell and composition</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">2. Zustand Store and Frontend State Contract</div>
+    <h2>The store is the frontend spine</h2>
+    <p>
+      <code>frontend/src/store/index.js</code> is one of the most important files in the codebase. It is where frontend state, backend hydration, UI mode switches, and data normalization come together. If a new feature needs selected PDF context, highlight index entries, chat history, or review launch state, it almost certainly touches this file.
+    </p>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Main responsibilities</h3>
+        <ul>
+          <li>Store the selected PDF and active workspace mode.</li>
+          <li>Hydrate highlights from the database on PDF selection.</li>
+          <li>Keep chat history per PDF through <code>chatHistoriesByPdf</code>.</li>
+          <li>Persist lightweight UI preferences such as workspace mode and placement suggestion toggle.</li>
+          <li>Normalize backend snake_case responses into camelCase UI objects.</li>
+          <li>Provide mutation helpers for stars, flags, notes, synthesis, and Q&amp;A actions.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Key state slices</h3>
+        <ul>
+          <li><code>researchSessions</code>, <code>pdfs</code>, <code>selectedPdf</code></li>
+          <li><code>highlightIndex</code></li>
+          <li><code>chatHistory</code> and <code>chatHistoriesByPdf</code></li>
+          <li><code>reviewMode</code> and <code>reviewScope</code></li>
+          <li><code>indexFocus</code>, <code>navRequest</code>, <code>flashHighlight</code></li>
+          <li><code>selectionContext</code> and reader-side temporary interaction state</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Normalization is a maintenance boundary</h3>
+    <p>
+      The store exposes <code>normalizeEntry</code> and <code>normalizeQA</code>. These functions convert backend rows into frontend-friendly structures. This is a critical safety boundary because many components assume camelCase fields and consistent nested shapes. If a backend response changes and these normalizers are not updated, breakage will often appear far away from the actual change.
+    </p>
+
+    <div class="flow">backend row → normalizeEntry / normalizeQA
+→ highlightIndex array in store
+→ HighlightIndex / PDFViewer / WorkspaceIndex / Review launch
+→ downstream UI behavior</div>
+
+    <div class="callout" style="margin-top:0.16in;">
+      <h3>Why the store matters for not breaking the app</h3>
+      <p>
+        Many features that look independent actually share the same normalized objects. For example, a change to Q&amp;A shape affects the index, the review launcher, full-page workspaces, and compare evidence summaries. When in doubt, change the adapter first and keep components dumb.
+      </p>
+    </div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>High-risk mistake:</strong>
+      <p style="margin-top:0.07in;">
+        Writing component-local shape fixes instead of updating the store normalizers. That creates inconsistent assumptions across the app and is one of the fastest ways to break index, review, and compare together.
+      </p>
+    </div>
+
+    <div class="footer">Page 3 — Store and state contract</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">3. Reader, Chat, and Index Capture Path</div>
+    <h2>How document interaction turns into stored knowledge</h2>
+    <p>
+      The reading and capture path is centered around <code>PDFViewer.jsx</code>, <code>ChatPanel.jsx</code>, and the highlights API. The code is designed so that a user can either interact directly with a highlighted passage or ask a question in chat and still end up with a reusable index entry and study card.
+    </p>
+
+    <div class="panel">
+      <h3>ChatPanel responsibilities</h3>
+      <ul>
+        <li>Build chat requests for the selected PDF, optionally with selected text and section title.</li>
+        <li>Choose between quick mode and full structured response mode.</li>
+        <li>Render grounded answers with page citations that can jump back into the PDF.</li>
+        <li>Create save candidates that can become index entries and study cards.</li>
+        <li>Extend partial selections toward sentence boundaries when source chunk text is available.</li>
+        <li>Handle dedup conflicts when logging study cards into the index.</li>
+      </ul>
+    </div>
+
+    <div class="grid-2" style="margin-top:0.16in;">
+      <div class="panel">
+        <h3>Backend side of chat</h3>
+        <p>
+          <code>backend/app/routers/chat.py</code> is thin by design. It validates the document, passes the request to <code>chat_service.chat()</code>, and returns answer plus sources. Additional helper endpoints exist for concept extraction, synthesis generation, and study-card preparation.
+        </p>
+        <p>
+          <code>chat_service.py</code> is where the heavier behavior lives: response templates, retrieval routing, document-vs-web fallback logic, and session-aware framing.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>Highlight and QA persistence</h3>
+        <p>
+          The frontend <code>saveToIndex</code> flow in the store either appends a new QA to an existing highlight entry or creates a new highlight entry first and then posts a QA under it. The backend router <code>backend/app/routers/highlights.py</code> routes all QA creation through <code>card_service.create_card()</code> so study-question canonicalization and dedup happen in one place.
+        </p>
+      </div>
+    </div>
+
+    <div class="flow" style="margin-top:0.16in;">reader selection or chat question
+→ ChatPanel builds save candidate
+→ store.saveToIndex()
+→ POST /api/pdfs/{pdf_id}/highlights (if needed)
+→ POST /api/highlights/{highlight_id}/qa
+→ card_service canonicalizes + dedups
+→ store re-fetches highlights
+→ normalized entry appears in index and review surfaces</div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>Do not break this:</strong>
+      <p style="margin-top:0.07in;">
+        The backend owns study-question canonicalization. If the frontend starts reintroducing custom parsing logic for question text, dedup quality and review consistency will diverge immediately.
+      </p>
+    </div>
+
+    <div class="footer">Page 4 — Reader, chat, and indexing path</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">4. Review System, Grading, and Scheduling</div>
+    <h2>The most breakage-sensitive learning loop</h2>
+    <p>
+      The review system is a thesis-critical part of the codebase. Its main frontend file is <code>frontend/src/components/ReviewSession.jsx</code>, and its backend route is <code>backend/app/routers/review.py</code>. This flow is intentionally designed to capture recall before grading is revealed.
+    </p>
+
+    <table class="table">
+      <tr><th style="width:25%;">Layer</th><th>Responsibility</th></tr>
+      <tr><td><code>ReviewSession.jsx</code></td><td>Implements the three-phase UX: recall, graded response, and done state. Controls reveal mode and confidence entry before submission.</td></tr>
+      <tr><td><code>review.py</code></td><td>Validates request, gets source text, runs grading, updates FSRS card state, writes review_log row, and returns grading feedback.</td></tr>
+      <tr><td><code>grading_service.py</code></td><td>Contains Claude grading prompt, score mapping, source retrieval for grading, and FSRS card reconstruction/persistence helpers.</td></tr>
+      <tr><td><code>models/review.py</code></td><td>Defines <code>ReviewLog</code>, prompt and rubric versions, session events, and human grading structures.</td></tr>
+    </table>
+
+    <div class="grid-2" style="margin-top:0.16in;">
+      <div class="panel">
+        <h3>Critical logic</h3>
+        <ul>
+          <li>User confidence is collected before grading is shown.</li>
+          <li>Claude grades the recall on three dimensions: core claim, supporting detail, faithfulness.</li>
+          <li>FSRS rating is derived from Claude’s overall grade, not the user confidence score.</li>
+          <li>Review logs preserve model version, prompt version, rubric version, and reveal telemetry.</li>
+          <li>Due-card queries filter archived QAs and diversify nearby cards by section.</li>
+        </ul>
+      </div>
+      <div class="callout">
+        <h3>Why this area is fragile</h3>
+        <p>
+          The review flow has both UX and methodological constraints. If the order of operations changes, for example confidence being recorded after the grade, or full source text being shown by default, the resulting study logs become less defensible for research analysis. This is not just a UI preference.
+        </p>
+      </div>
+    </div>
+
+    <div class="flow" style="margin-top:0.16in;">fetch due cards
+→ user sees study_question
+→ confidence + recall_text entered
+→ submit_review()
+→ get_source_text() from chunk ids
+→ Claude grading
+→ compute overall score
+→ map score to FSRS rating
+→ persist updated qa_pair state
+→ append review_log row
+→ return grade + feedback + next schedule state</div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>Do not break this:</strong>
+      <p style="margin-top:0.07in;">
+        Keep the one-call submission contract in <code>/api/review/submit</code>. Confidence, recall text, reveal metadata, grading, and scheduling all assume one transaction-like path. Splitting this casually would complicate both data integrity and thesis analysis.
+      </p>
+    </div>
+
+    <div class="footer">Page 5 — Review, grading, and scheduling</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">5. Research Sessions and Comparative Analysis</div>
+    <h2>Organization and cross-paper reasoning layers</h2>
+    <p>
+      The session layer and compare layer are the main architectural moves that elevate the project from single-paper assistance to research workspace. These are handled mostly by <code>backend/app/models/research_session.py</code>, <code>research_session_service.py</code>, <code>routers/research_sessions.py</code>, and <code>comparative_analysis_service.py</code>.
+    </p>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Research session code responsibilities</h3>
+        <ul>
+          <li>Create and maintain default sessions such as Learning Design Research and Unsorted Research.</li>
+          <li>Provide heuristics for session suggestion and PDF placement.</li>
+          <li>Maintain many-to-many PDF membership while preserving a legacy primary-session pointer.</li>
+          <li>Support create, edit, delete, assign, remove, suggest, and backfill flows.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Comparative analysis code responsibilities</h3>
+        <ul>
+          <li>Build deterministic baseline rows from indexed evidence.</li>
+          <li>Sample PDF chunks directly from ChromaDB as primary evidence.</li>
+          <li>Generate per-paper AI analyses.</li>
+          <li>Generate and normalize a session matrix with fixed and session-specific axes.</li>
+          <li>Cache results on the research session and enrich weak AI output with deterministic fallbacks.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:0.16in;">
+      <h3>Important architectural decision</h3>
+      <p>
+        Comparative analysis is PDF-first, not index-first. Saved Q&amp;A material is used as a secondary signal showing what the reader has already surfaced. This is an important boundary because otherwise the compare view would become a summary of interaction artifacts rather than a comparison of the actual documents.
+      </p>
+    </div>
+
+    <div class="flow" style="margin-top:0.16in;">session id
+→ get session memberships
+→ fetch PDFs in session
+→ fetch saved highlight entries / QA anchors
+→ sample PDF chunks from Chroma
+→ generate per-paper analyses
+→ synthesize matrix, insight cards, gaps, guidance
+→ cache on research session
+→ WorkspaceCompare renders full-page research desk</div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>Do not break this:</strong>
+      <p style="margin-top:0.07in;">
+        Avoid mutating ORM relationships during read-only comparative analysis. This already caused one integrity failure previously. Filtering archived QAs must be done without rewriting relationship fields on live ORM objects.
+      </p>
+    </div>
+
+    <div class="footer">Page 6 — Sessions and comparative analysis</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">6. Backend Services, Data Model, and External Dependencies</div>
+    <h2>Where domain logic actually lives</h2>
+    <p>
+      The backend is deliberately organized so routers stay relatively thin and the heavier logic sits inside services. This is useful both for maintenance and for thesis transparency because it makes the reasoning steps more inspectable.
+    </p>
+
+    <table class="table">
+      <tr><th style="width:28%;">Service / model</th><th>What it does in the larger scheme</th></tr>
+      <tr><td><code>pdf_service.py</code></td><td>Extracts text and chunks from uploaded PDFs.</td></tr>
+      <tr><td><code>embedding_service.py</code></td><td>Generates MiniLM embeddings for retrieval and similarity work.</td></tr>
+      <tr><td><code>chroma_service.py</code></td><td>Persists chunk vectors and supports passage retrieval / chunk resolution.</td></tr>
+      <tr><td><code>s3_service.py</code></td><td>Stores and serves original PDF files.</td></tr>
+      <tr><td><code>toc_service.py</code></td><td>Extracts TOC or approximates it via font heuristics.</td></tr>
+      <tr><td><code>chat_service.py</code></td><td>Owns answer generation strategy and response prompting.</td></tr>
+      <tr><td><code>card_service.py</code></td><td>Owns card creation contract, study-question derivation, and dedup.</td></tr>
+      <tr><td><code>grading_service.py</code></td><td>Owns rubric-based grading and FSRS coupling.</td></tr>
+      <tr><td><code>ontology_service.py</code></td><td>Generates paper ontology, rhetorical facets, topic tags, and recomputation flows.</td></tr>
+      <tr><td><code>research_session_service.py</code></td><td>Owns session defaults, placement heuristics, and session assignment rules.</td></tr>
+      <tr><td><code>comparative_analysis_service.py</code></td><td>Owns the session-level literature-review desk.</td></tr>
+    </table>
+
+    <div class="grid-2" style="margin-top:0.16in;">
+      <div class="panel">
+        <h3>Core database entities</h3>
+        <ul>
+          <li><code>PDFDocument</code> links file metadata to ontology and session state.</li>
+          <li><code>HighlightEntry</code> is the parent storage unit for indexed passages.</li>
+          <li><code>QAPair</code> is both study artifact and spaced-repetition card.</li>
+          <li><code>ReviewLog</code> is the empirical ledger of actual review events.</li>
+          <li><code>ResearchSession</code> is the organization unit for multi-paper work.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>External system dependencies</h3>
+        <ul>
+          <li><strong>Postgres</strong> for persistent structured state.</li>
+          <li><strong>ChromaDB</strong> for chunk retrieval and evidence anchoring.</li>
+          <li><strong>S3</strong> for file persistence.</li>
+          <li><strong>Anthropic</strong> for chat, grading, ontology, and compare generation.</li>
+          <li><strong>SentenceTransformers</strong> for embeddings and dedup similarity.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>Maintenance rule:</strong>
+      <p style="margin-top:0.07in;">
+        When debugging behavior, check the router last. The router usually only validates shape and delegates. The actual logic almost always sits in a service or in the frontend store adapter.
+      </p>
+    </div>
+
+    <div class="footer">Page 7 — Services, models, and dependencies</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">7. Safe Re-entry, Testing, and Breakage Avoidance</div>
+    <h2>How to jump back into work without destabilizing the app</h2>
+
+    <div class="panel">
+      <h3>Where to start when resuming work</h3>
+      <ul>
+        <li>Start from the user flow, not from a file. Ask whether the change belongs to reading, indexing, review, sessions, or compare.</li>
+        <li>Identify the boundary file: shell component, store adapter, router, or service.</li>
+        <li>Inspect the corresponding Playwright coverage before editing.</li>
+        <li>Prefer additive changes to data shape and serialization over replacing existing fields.</li>
+      </ul>
+    </div>
+
+    <div class="grid-2" style="margin-top:0.16in;">
+      <div class="callout">
+        <h3>High-value regression areas</h3>
+        <ul>
+          <li>Chat save-to-index flows and duplicate resolution.</li>
+          <li>Review overlay sequencing and reveal telemetry.</li>
+          <li>Session assignment and sidebar rendering.</li>
+          <li>Comparative analysis cache refresh.</li>
+          <li>Store normalization after backend field changes.</li>
+        </ul>
+      </div>
+      <div class="callout">
+        <h3>Useful existing tests</h3>
+        <ul>
+          <li><code>step2_dedup_verify.js</code></li>
+          <li><code>step3_recall_first_verify.js</code></li>
+          <li><code>workspace_shell_part1.js</code></li>
+          <li><code>workspace_index_review_part2.js</code></li>
+          <li><code>workspace_compare_part3.js</code></li>
+          <li><code>part3_comparative_analysis.js</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Operational invariants</h3>
+    <ul>
+      <li>Postgres is the source of truth for PDFs, highlights, QAs, sessions, and review logs.</li>
+      <li>The frontend store is the source of truth for normalized frontend shapes.</li>
+      <li>The backend owns study-question canonicalization and dedup decisions.</li>
+      <li>The review pipeline must remain recall-first.</li>
+      <li>Comparative analysis must remain PDF-first.</li>
+      <li>Legacy artifacts should be preserved whenever possible rather than silently deleted or rewritten.</li>
+    </ul>
+
+    <h3>Recommended edit strategy</h3>
+    <div class="flow">1. Reproduce current behavior with Playwright or manual path.
+2. Identify whether the bug is shape, persistence, retrieval, or rendering.
+3. If shape: update adapter / serializer first.
+4. If behavior: update service first, router second, component last.
+5. Re-run the narrow test.
+6. Re-run at least one end-to-end workspace flow touching the same feature family.</div>
+
+    <div class="warning" style="margin-top:0.16in;">
+      <strong>Current active caution area:</strong>
+      <p style="margin-top:0.07in;">
+        The next major refactor target is contextual integrity in Index and Review. Questions, source passages, and study cards need stronger provenance and context modeling. Any implementation here should preserve existing chats, review logs, and index artifacts while improving how context is derived and displayed.
+      </p>
+    </div>
+
+    <div class="footer">Page 8 — Re-entry guide and maintenance rules</div>
+  </section>
+</body>
+</html>

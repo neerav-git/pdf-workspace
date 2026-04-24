@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy import Column, ForeignKey, Integer, String, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from app.db.session import Base
 
 
@@ -12,4 +13,12 @@ class PDFDocument(Base):
     page_count = Column(Integer, nullable=False, default=0)
     chunk_count = Column(Integer, nullable=False, default=0)
     ontology_json = Column(JSONB)
+    research_session_id = Column(Integer, ForeignKey("research_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    research_session = relationship("ResearchSession", back_populates="pdfs")
+    research_session_memberships = relationship(
+        "ResearchSessionPDF",
+        back_populates="pdf",
+        cascade="all, delete-orphan",
+    )

@@ -7,9 +7,10 @@ from sqlalchemy import text
 from app.db.session import engine, Base, SessionLocal
 # Import models so SQLAlchemy registers them before create_all
 import app.models.pdf       # noqa: F401
+import app.models.research_session  # noqa: F401
 import app.models.highlight  # noqa: F401
 import app.models.review     # noqa: F401
-from app.routers import pdfs, chat, voice, highlights, review, research
+from app.routers import pdfs, chat, voice, highlights, review, research, research_sessions
 from app.core.config import settings
 
 
@@ -22,13 +23,17 @@ async def lifespan(app: FastAPI):
         conn.execute(text("ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS original_question TEXT"))
         conn.execute(text("ALTER TABLE highlight_entries ADD COLUMN IF NOT EXISTS deep_synthesis TEXT"))
         conn.execute(text("ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS ontology_json JSONB"))
+        conn.execute(text("ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS research_session_id INTEGER"))
         conn.execute(text("ALTER TABLE highlight_entries ADD COLUMN IF NOT EXISTS cluster_tag VARCHAR(200)"))
         conn.execute(text("ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS topic_tags JSONB"))
+        conn.execute(text("ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS context_override_json JSONB"))
     # Seed default rubric + prompt versions for grading (Research B4, C4)
     from app.services.grading_service import ensure_default_rubric_version
+    from app.services.research_session_service import ensure_default_research_sessions
     db = SessionLocal()
     try:
         ensure_default_rubric_version(db)
+        ensure_default_research_sessions(db)
     finally:
         db.close()
     yield
@@ -50,6 +55,7 @@ app.include_router(voice.router)
 app.include_router(highlights.router)
 app.include_router(review.router)
 app.include_router(research.router)
+app.include_router(research_sessions.router)
 
 
 @app.get("/health")

@@ -310,6 +310,115 @@
   margin-top: -4px;
 }
 
+.rv-context-block,
+.rv-context-passage,
+.rv-repair-warning {
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.rv-context-block,
+.rv-context-passage {
+  background: #121821;
+  border: 1px solid #223040;
+}
+
+.rv-repair-warning {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  background: #211214;
+  border: 1px solid #4a2228;
+}
+
+.rv-repair-warning-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rv-repair-warning-copy p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #d3afb5;
+}
+
+.rv-repair-warning-label,
+.rv-context-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rv-repair-warning-label {
+  color: #ff9f9f;
+}
+
+.rv-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.rv-context-label {
+  color: #8aa6c2;
+}
+
+.rv-context-location {
+  font-size: 11px;
+  color: #6f8ca7;
+}
+
+.rv-context-summary,
+.rv-context-passage-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.rv-context-summary {
+  color: #c6d2dd;
+}
+
+.rv-context-passage-text {
+  color: #d4c09a;
+}
+
+.rv-context-actions,
+.rv-reader-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rv-reader-link-row {
+  justify-content: flex-start;
+}
+
+.rv-context-toggle,
+.rv-btn--secondary {
+  background: #171717;
+  border: 1px solid #2f2f2f;
+  color: #b0becd;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+
+.rv-context-toggle:hover,
+.rv-btn--secondary:hover {
+  background: #1c2530;
+  border-color: #37506c;
+  color: #d9e7f5;
+}
+
 /* Fallback-template hint — appears when study_question is one of the generic
    per-type templates (card shipped without a specific prompt). Points the
    user at the reveal affordance below. */

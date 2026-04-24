@@ -1,8 +1,8 @@
 import client from './client'
 
-export const fetchDueCards = (pdfId = null) => {
+export const fetchDueCards = (pdfId = null, limit = 20) => {
   const url = pdfId ? `/pdfs/${pdfId}/review/due` : '/review/due'
-  return client.get(url).then((r) => r.data)
+  return client.get(url, { params: { limit } }).then((r) => r.data)
 }
 
 export const submitReview = (body) =>

@@ -38,6 +38,32 @@ function facetMeta(facet) {
   return FACET_META[facet] || FACET_META.uncategorized
 }
 
+const QUESTION_ORIGIN_META = {
+  highlight:  { label: 'From highlight', tone: 'highlight' },
+  chat:       { label: 'From chat', tone: 'chat' },
+  concept:    { label: 'From concept', tone: 'concept' },
+  manual:     { label: 'Manual', tone: 'manual' },
+  comparison: { label: 'From compare', tone: 'comparison' },
+}
+
+const QUESTION_INTENT_META = {
+  background: { label: 'Background', order: 1 },
+  definition: { label: 'Definition', order: 2 },
+  method:     { label: 'Method', order: 3 },
+  result:     { label: 'Result', order: 4 },
+  critique:   { label: 'Critique', order: 5 },
+  comparison: { label: 'Comparison', order: 6 },
+  takeaway:   { label: 'Takeaway', order: 7 },
+}
+
+function getQuestionOriginMeta(questionContext) {
+  return QUESTION_ORIGIN_META[questionContext?.questionOrigin] || QUESTION_ORIGIN_META.manual
+}
+
+function getQuestionIntentMeta(questionContext) {
+  return QUESTION_INTENT_META[questionContext?.questionIntent] || QUESTION_INTENT_META.takeaway
+}
+
 // Display question for a card.
 //
 // For user-authored cards (manual/chat), we prefer the user's RAW input
@@ -127,12 +153,21 @@ function getLearningCardLabel(qa, entry) {
   return { title, subtitle, type, isAction: meta.isAction, derivedQuestion }
 }
 
-function getEntryFocusLabel(entry) {
-  if (!entry.qaPairs?.length) return null
-  const primary = [...entry.qaPairs].sort((a, b) => {
+function getPrimaryQA(entry) {
+  if (!entry?.qaPairs?.length) return null
+  return [...entry.qaPairs].sort((a, b) => {
     if (b.starred !== a.starred) return Number(b.starred) - Number(a.starred)
     return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
   })[0]
+}
+
+function getPrimaryQuestionContext(entry) {
+  return getPrimaryQA(entry)?.questionContext || null
+}
+
+function getEntryFocusLabel(entry) {
+  const primary = getPrimaryQA(entry)
+  if (!primary) return null
   return getLearningCardLabel(primary, entry)
 }
 
@@ -167,6 +202,28 @@ function groupByConcept(entries) {
   return Object.entries(map)
     .map(([concept, items]) => ({ concept, entries: items }))
     .sort((a, b) => b.entries.length - a.entries.length)
+}
+
+function groupByIntent(entries) {
+  const map = {}
+  for (const entry of entries) {
+    const intents = new Set(
+      (entry.qaPairs || []).map((qa) => qa.questionContext?.questionIntent || 'takeaway'),
+    )
+    if (!intents.size) intents.add('takeaway')
+    for (const intent of intents) {
+      if (!map[intent]) map[intent] = []
+      map[intent].push(entry)
+    }
+  }
+  return Object.entries(map)
+    .map(([intent, items]) => ({ intent, entries: items }))
+    .sort((a, b) => {
+      const orderA = getQuestionIntentMeta({ questionIntent: a.intent }).order
+      const orderB = getQuestionIntentMeta({ questionIntent: b.intent }).order
+      if (orderA !== orderB) return orderA - orderB
+      return b.entries.length - a.entries.length
+    })
 }
 
 // ── Grouping ──────────────────────────────────────────────────────────────────
@@ -266,6 +323,55 @@ function relativeTime(isoString) {
   return `${Math.floor(days / 30)}mo`
 }
 
+function getQAReviewStatus(qa) {
+  if (!qa) return { tone: 'reviewed', label: 'No review status' }
+  const now = Date.now()
+  if (qa.dueAt && new Date(qa.dueAt).getTime() <= now && qa.state !== 'suspended') {
+    return { tone: 'due', label: 'Due now' }
+  }
+  if (qa.state === 'learning' || qa.state === 'relearning') {
+    return { tone: 'learning', label: 'In learning' }
+  }
+  if (qa.state === 'new') {
+    return { tone: 'new', label: 'New card' }
+  }
+  return { tone: 'reviewed', label: 'Reviewed' }
+}
+
+function getQuestionLocationLabel(questionContext, entry) {
+  const locator = questionContext?.sourceLocator || {}
+  const section = locator.sectionTitle || getEntrySectionLabel(entry)
+  const page = locator.page || entry.pageNumber
+  if (section && page) return `${section} · p.${page}`
+  if (section) return section
+  if (page) return `p.${page}`
+  return 'Source location unavailable'
+}
+
+function getQuestionSourceScopeLabel(questionContext) {
+  const scope = questionContext?.questionScope || 'document'
+  if (scope === 'passage') return 'Passage grounded'
+  if (scope === 'section') return 'Section grounded'
+  if (scope === 'session') return 'Session grounded'
+  return 'Document grounded'
+}
+
+function getQuestionSourcePreview(questionContext, qa, entry) {
+  return (
+    questionContext?.sourceExcerptFull ||
+    questionContext?.sourceExcerptShort ||
+    qa.selectionText ||
+    entry.highlightText ||
+    ''
+  )
+}
+
+function isSameContextSummary(a, b) {
+  const left = (a || '').replace(/\s+/g, ' ').trim()
+  const right = (b || '').replace(/\s+/g, ' ').trim()
+  return Boolean(left) && left === right
+}
+
 // ── SynthesisDisplay — collapsible synthesis block ───────────────────────────
 
 function SynthesisDisplay({ entry, runSynthesis, runDeepSynthesis, clearDeepSynthesis, deepSynthesis, deepLoading }) {
@@ -338,6 +444,7 @@ export default function HighlightIndex() {
     highlightIndex, selectedPdf,
     requestNav, setFlashHighlight,
     indexFocus, clearIndexFocus,
+    setIndexFocus, setWorkspaceMode,
     toggleStarEntry, toggleStarQA,
     toggleFlagEntry, toggleAnchorEntry, toggleReviewedEntry,
     deleteIndexEntry, deleteIndexQA,
@@ -357,12 +464,13 @@ export default function HighlightIndex() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPdf?.id, highlightIndex.length])
 
-  const [view, setView]                     = useState('page') // 'page'|'section'|'concept'|'starred'
+  const [view, setView]                     = useState('page') // 'page'|'section'|'concept'|'intent'|'starred'
   const [activeConcept, setActiveConcept]   = useState(null)
   const [starredFilter, setStarredFilter]   = useState('stars') // 'stars'|'anchored'|'flagged'
   const [focusedEntryId, setFocusedEntryId] = useState(null)
   const [openEntries, setOpenEntries]       = useState({})    // entryId → bool
   const [expandedQAs, setExpandedQAs]       = useState({})    // qaId → bool
+  const [expandedSourcePreviews, setExpandedSourcePreviews] = useState({}) // qaId → bool
   const [editingNote, setEditingNote]       = useState({})    // entryId → bool
   const [synthesizing, setSynthesizing]     = useState({})    // entryId → bool
   const [deepSynthesizing, setDeepSynthesizing] = useState({}) // entryId → bool
@@ -451,10 +559,12 @@ export default function HighlightIndex() {
   const pages          = groupByPage(pdfEntries)
   const hierarchy      = groupByHierarchy(pdfEntries)
   const conceptGroups  = groupByConcept(pdfEntries)
+  const intentGroups   = groupByIntent(pdfEntries)
   const facetCount     = new Set(
     pdfEntries.flatMap((e) => e.qaPairs.map((q) => q.rhetoricalFacet || 'uncategorized')),
   ).size
   const totalConcepts  = conceptGroups.length
+  const totalIntents   = intentGroups.length
 
   const starredQAs = pdfEntries
     .flatMap((e) => e.qaPairs.filter((q) => q.starred).map((q) => ({ ...q, entry: e })))
@@ -462,6 +572,9 @@ export default function HighlightIndex() {
 
   const toggleExpand = (qaId) =>
     setExpandedQAs((prev) => ({ ...prev, [qaId]: !prev[qaId] }))
+
+  const toggleSourcePreview = (qaId) =>
+    setExpandedSourcePreviews((prev) => ({ ...prev, [qaId]: !prev[qaId] }))
 
   // ── Chip row renderer ─────────────────────────────────────────────────────
   // Shows up to MAX_VISIBLE_CHIPS concept chips; a "+N" overflow button expands
@@ -587,13 +700,219 @@ export default function HighlightIndex() {
     )
   }
 
+  function openIndexTabForQA(entry, qa, questionContext = null) {
+    const pageNumber = questionContext?.sourceLocator?.page || entry.pageNumber || null
+    const text = questionContext?.sourceExcerptShort || qa.selectionText || entry.highlightText || ''
+    setIndexFocus({
+      entryId: entry.id,
+      qaId: qa.id,
+      text,
+      pageNumber,
+    })
+    setWorkspaceMode('index')
+  }
+
+  function jumpToSource(entry, questionContext = null, previewText = '') {
+    const pageNumber = questionContext?.sourceLocator?.page || entry.pageNumber || null
+    if (pageNumber) requestNav(pageNumber)
+    const text = previewText || questionContext?.sourceExcerptShort || entry.highlightText
+    if (text && pageNumber) {
+      setFlashHighlight({ text, pageNumber })
+    }
+  }
+
+  function EntryContextSummary({ entry }) {
+    const questionContext = getPrimaryQuestionContext(entry)
+    if (!questionContext) return null
+    const origin = getQuestionOriginMeta(questionContext)
+    const intent = getQuestionIntentMeta(questionContext)
+
+    return (
+      <div className="idx-entry-context">
+        <div className="idx-entry-context-badges">
+          <span className={`idx-context-badge idx-context-badge--${origin.tone}`}>{origin.label}</span>
+          <span className="idx-context-badge idx-context-badge--scope">{getQuestionSourceScopeLabel(questionContext)}</span>
+          <span className="idx-context-badge idx-context-badge--intent">{intent.label}</span>
+          {questionContext.needsDisambiguation && (
+            <span className="idx-context-badge idx-context-badge--repair">Needs context</span>
+          )}
+        </div>
+        {questionContext.contextSummary && (
+          <div className="idx-entry-context-summary">{questionContext.contextSummary}</div>
+        )}
+      </div>
+    )
+  }
+
+  function renderEntryCard(entry, { key = entry.id, conceptToHide = null } = {}) {
+    const isOpen = openEntries[entry.id] === true
+    const isFocused = entry.id === focusedEntryId
+    const qaCount = entry.qaPairs.length
+    const sectionLabel = getEntrySectionLabel(entry)
+    const sectionContext = getEntrySectionContext(entry)
+    const focusLabel = getEntryFocusLabel(entry)
+    const dueStatus = getDueStatus(entry)
+    const primaryContextSummary = getPrimaryQuestionContext(entry)?.contextSummary || ''
+
+    function openSavedCards(e) {
+      e.stopPropagation()
+      setOpenEntries((prev) => ({ ...prev, [entry.id]: true }))
+      const sortedQAs = [...entry.qaPairs].sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
+      if (sortedQAs.length === 1) {
+        setExpandedQAs((prev) => ({ ...prev, [sortedQAs[0].id]: true }))
+      }
+    }
+
+    return (
+      <div
+        key={key}
+        ref={(el) => { if (el) entryRefs.current[entry.id] = el }}
+        className={`idx-entry ${entry.starred ? 'starred' : ''} ${isFocused ? 'focused' : ''}`}
+      >
+        <div
+          className="idx-entry-header"
+          onClick={() => setOpenEntries((prev) => ({ ...prev, [entry.id]: !isOpen }))}
+        >
+          <button
+            className={`idx-star ${entry.starred ? 'on' : ''}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => { e.stopPropagation(); toggleStarEntry(entry.id) }}
+            title={entry.starred ? 'Unstar' : 'Star this highlight'}
+          >
+            {entry.starred ? '★' : '☆'}
+          </button>
+
+          <div className="idx-entry-text-wrap">
+            <div className="idx-entry-section-row">
+              <button
+                className="idx-page-num small"
+                title={`Jump to page ${entry.pageNumber}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { e.stopPropagation(); requestNav(entry.pageNumber) }}
+              >
+                p.{entry.pageNumber}
+              </button>
+              {sectionLabel && <span className="idx-entry-section-label">{sectionLabel}</span>}
+              <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
+            </div>
+            {sectionContext && (
+              <div className="idx-entry-section-context">{sectionContext}</div>
+            )}
+            {focusLabel && (
+              <div className="idx-entry-focus">
+                <span className="idx-entry-focus-title">{focusLabel.title}</span>
+                <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
+              </div>
+            )}
+            <EntryContextSummary entry={entry} />
+            {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
+              <button
+                key={ti}
+                className={`idx-entry-text${text.includes('\n') ? ' idx-entry-text--table' : ''}`}
+                title={text.includes('\n') ? 'Jump to page (table — exact location not highlighted)' : 'Jump to this passage in the PDF'}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  requestNav(entry.pageNumber)
+                  setFlashHighlight({ text, pageNumber: entry.pageNumber })
+                }}
+              >
+                {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
+              </button>
+            ))}
+            <span className="idx-entry-meta">
+              <button
+                className="idx-entry-meta-count idx-entry-meta-count-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={openSavedCards}
+                title={qaCount === 1 ? 'Open the saved card for this passage' : 'Open the saved cards for this passage'}
+              >
+                {qaCount === 1 ? 'Open 1 saved card' : `Open ${qaCount} saved cards`}
+              </button>
+              {entry.qaPairs.some((q) => q.starred) && (
+                <span className="idx-has-stars">· ★ {entry.qaPairs.filter((q) => q.starred).length}</span>
+              )}
+              {entry.note && <span className="idx-meta-flag">✎</span>}
+              {entry.flagged && <span className="idx-meta-flag">🚩</span>}
+              {entry.anchored && <span className="idx-meta-flag">⚓</span>}
+            </span>
+          </div>
+
+          <div className="idx-entry-right">
+            <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
+            <button
+              className="idx-del"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); deleteIndexEntry(entry.id) }}
+              title="Delete highlight"
+            >✕</button>
+          </div>
+        </div>
+
+        {isOpen && (
+          <>
+            <div className="idx-entry-expanded-header">
+              <ConceptChips
+                entry={conceptToHide ? { ...entry, concepts: entry.concepts.filter((c) => c !== conceptToHide) } : entry}
+                navigable={true}
+              />
+              <CurationBar entry={entry} />
+            </div>
+            <AnnotationField entry={entry} />
+            <SynthesisSection entry={entry} />
+            {entry.qaPairs.length > 0 && (
+              <div className="idx-qa-list-header">
+                <span>Saved cards</span>
+                <small>
+                  {entry.qaPairs.length === 1
+                    ? 'Open the card below to read the full answer'
+                    : 'Open a card below to read the full answer'}
+                </small>
+              </div>
+            )}
+            <ul className="idx-qa-list">
+              {entry.qaPairs.length === 0 && (
+                <li className="idx-qa-empty">No Q&amp;As saved yet.</li>
+              )}
+              {[...entry.qaPairs]
+                .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
+                .map((qa) => (
+                  <QACard
+                    key={qa.id}
+                    qa={qa}
+                    entryId={entry.id}
+                    entry={entry}
+                    primaryContextSummary={primaryContextSummary}
+                    isFocused={false}
+                  />
+                ))
+              }
+            </ul>
+            <RelatedPassages entry={entry} />
+          </>
+        )}
+      </div>
+    )
+  }
+
   // ── QA card renderer (shared between all views) ──────────────────────────
 
-  function QACard({ qa, entryId, entry, isFocused }) {
+  function QACard({ qa, entryId, entry, primaryContextSummary, isFocused }) {
     const { title, subtitle, type, isAction, derivedQuestion } = getLearningCardLabel(qa, entry)
     const isExpanded = !!expandedQAs[qa.id]
+    const isSourceExpanded = !!expandedSourcePreviews[qa.id]
     const [reviewLoading, setReviewLoading] = useState(false)
     const facet = facetMeta(qa.rhetoricalFacet || 'uncategorized')
+    const questionContext = qa.questionContext || getPrimaryQuestionContext(entry)
+    const provenance = getQuestionOriginMeta(questionContext)
+    const intent = getQuestionIntentMeta(questionContext)
+    const reviewStatus = getQAReviewStatus(qa)
+    const locationLabel = getQuestionLocationLabel(questionContext, entry)
+    const sourceScopeLabel = getQuestionSourceScopeLabel(questionContext)
+    const sourcePreview = getQuestionSourcePreview(questionContext, qa, entry)
+    const canJumpToSource = Boolean(questionContext?.sourceLocator?.page || entry.pageNumber)
+    const canExpandSource = Boolean(sourcePreview)
+    const showCollapsedContextSummary = !isSameContextSummary(questionContext?.contextSummary, primaryContextSummary)
 
     // Manual question display: truncate in header; show full text above answer when expanded
     const shortQuestion = title.length > 82 ? title.slice(0, 80) + '…' : title
@@ -642,6 +961,23 @@ export default function HighlightIndex() {
                   {facet.label}
                 </span>
               </div>
+              {questionContext?.contextSummary && showCollapsedContextSummary && (
+                <div className="idx-qa-context-summary">
+                  {questionContext.contextSummary}
+                </div>
+              )}
+              <div className="idx-qa-context-row">
+                <span className={`idx-context-badge idx-context-badge--${provenance.tone}`}>{provenance.label}</span>
+                <span className="idx-context-badge idx-context-badge--scope">{sourceScopeLabel}</span>
+                <span className="idx-context-badge idx-context-badge--intent">{intent.label}</span>
+                {questionContext?.needsDisambiguation && (
+                  <span className="idx-context-badge idx-context-badge--repair">Needs context</span>
+                )}
+              </div>
+              <div className="idx-qa-source-row">
+                <span className="idx-qa-source-label">{locationLabel}</span>
+                <span className={`idx-due-badge idx-due-badge--${reviewStatus.tone}`}>{reviewStatus.label}</span>
+              </div>
               {derivedQuestion && (
                 <span className="idx-qa-derived-question" title={derivedQuestion}>
                   Saved as: {derivedQuestion}
@@ -689,6 +1025,51 @@ export default function HighlightIndex() {
                 {facet.label}
               </span>
             </div>
+            {questionContext?.needsDisambiguation && (
+              <div className="idx-qa-repair-banner">
+                This question needs context repair. The original wording is preserved, but the review flow should treat it as partially grounded.
+              </div>
+            )}
+            {questionContext?.contextSummary && (
+              <div className="idx-qa-context-panel">
+                <div className="idx-qa-context-panel-label">Question context</div>
+                <p>{questionContext.contextSummary}</p>
+              </div>
+            )}
+            <div className="idx-qa-action-row">
+              <span className="idx-qa-action-hint">Read full answer below. Use the tools to inspect the source or move to the full Index.</span>
+              {canExpandSource && (
+                <button
+                  className="idx-expand-btn idx-expand-btn--secondary"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => { e.stopPropagation(); toggleSourcePreview(qa.id) }}
+                >
+                  {isSourceExpanded ? 'Hide source preview' : 'Preview source'}
+                </button>
+              )}
+              {canJumpToSource && (
+                <button
+                  className="idx-expand-btn idx-expand-btn--secondary"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => { e.stopPropagation(); jumpToSource(entry, questionContext, sourcePreview) }}
+                >
+                  Jump to source
+                </button>
+              )}
+              <button
+                className="idx-expand-btn idx-expand-btn--secondary"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { e.stopPropagation(); openIndexTabForQA(entry, qa, questionContext) }}
+              >
+                Open in Index tab
+              </button>
+            </div>
+            {isSourceExpanded && sourcePreview && (
+              <div className="idx-qa-source-preview">
+                <div className="idx-qa-source-preview-label">Source preview</div>
+                <p>{sourcePreview}</p>
+              </div>
+            )}
             {derivedQuestion && (
               <p className="idx-qa-derived-full">Saved as study question: {derivedQuestion}</p>
             )}
@@ -924,6 +1305,12 @@ export default function HighlightIndex() {
           Facets {facetCount} · Topics {totalConcepts}
         </button>
         <button
+          className={`idx-view-tab ${view === 'intent' ? 'active' : ''}`}
+          onClick={() => setView('intent')}
+        >
+          By Intent {totalIntents}
+        </button>
+        <button
           className={`idx-view-tab ${view === 'starred' ? 'active' : ''}`}
           onClick={() => setView('starred')}
         >
@@ -955,128 +1342,7 @@ export default function HighlightIndex() {
               </div>
 
               {/* Highlight entries */}
-              {items.map((entry) => {
-                const isOpen   = openEntries[entry.id] === true
-                const isFocused = entry.id === focusedEntryId
-                const qaCount  = entry.qaPairs.length
-                const sectionLabel = getEntrySectionLabel(entry)
-                const sectionContext = getEntrySectionContext(entry)
-                const focusLabel = getEntryFocusLabel(entry)
-                const dueStatus = getDueStatus(entry)
-
-                return (
-                  <div
-                    key={entry.id}
-                    ref={(el) => { if (el) entryRefs.current[entry.id] = el }}
-                    className={`idx-entry ${entry.starred ? 'starred' : ''} ${isFocused ? 'focused' : ''}`}
-                  >
-                    {/* Highlight header row */}
-                    <div
-                      className="idx-entry-header"
-                      onClick={() => setOpenEntries((prev) => ({ ...prev, [entry.id]: !isOpen }))}
-                    >
-                      <button
-                        className={`idx-star ${entry.starred ? 'on' : ''}`}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={(e) => { e.stopPropagation(); toggleStarEntry(entry.id) }}
-                        title={entry.starred ? 'Unstar' : 'Star this highlight'}
-                      >
-                        {entry.starred ? '★' : '☆'}
-                      </button>
-
-                      <div className="idx-entry-text-wrap">
-                        <div className="idx-entry-section-row">
-                          <button
-                            className="idx-page-num small"
-                            title={`Jump to page ${entry.pageNumber}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={(e) => { e.stopPropagation(); requestNav(entry.pageNumber) }}
-                          >
-                            p.{entry.pageNumber}
-                          </button>
-                          {sectionLabel && <span className="idx-entry-section-label">{sectionLabel}</span>}
-                          <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
-                        </div>
-                        {sectionContext && (
-                          <div className="idx-entry-section-context">{sectionContext}</div>
-                        )}
-                        {focusLabel && (
-                          <div className="idx-entry-focus">
-                            <span className="idx-entry-focus-title">{focusLabel.title}</span>
-                            <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
-                          </div>
-                        )}
-                        {/* One button per distinct selection — click to jump + flash highlight */}
-                        {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
-                          <button
-                            key={ti}
-                            className={`idx-entry-text${text.includes('\n') ? ' idx-entry-text--table' : ''}`}
-                            title={text.includes('\n') ? 'Jump to page (table — exact location not highlighted)' : 'Jump to this passage in the PDF'}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              requestNav(entry.pageNumber)
-                              setFlashHighlight({ text, pageNumber: entry.pageNumber })
-                            }}
-                          >
-                            {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
-                          </button>
-                        ))}
-                        <span className="idx-entry-meta">
-                          <span className="idx-entry-meta-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
-                          {entry.qaPairs.some((q) => q.starred) && (
-                            <span className="idx-has-stars">· ★ {entry.qaPairs.filter((q) => q.starred).length}</span>
-                          )}
-                          {entry.note   && <span className="idx-meta-flag">✎</span>}
-                          {entry.flagged && <span className="idx-meta-flag">🚩</span>}
-                          {entry.anchored && <span className="idx-meta-flag">⚓</span>}
-                        </span>
-                      </div>
-
-                      <div className="idx-entry-right">
-                        <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
-                        <button
-                          className="idx-del"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={(e) => { e.stopPropagation(); deleteIndexEntry(entry.id) }}
-                          title="Delete highlight"
-                        >✕</button>
-                      </div>
-                    </div>
-
-                    {/* Expanded body: concepts + curation + annotation + Q&As + related */}
-                    {isOpen && (
-                      <>
-                        {/* Concept chips + curation toggles — only shown when expanded */}
-                        <div className="idx-entry-expanded-header">
-                          <ConceptChips entry={entry} navigable={true} />
-                          <CurationBar entry={entry} />
-                        </div>
-                        <AnnotationField entry={entry} />
-                        <SynthesisSection entry={entry} />
-                        <ul className="idx-qa-list">
-                          {entry.qaPairs.length === 0 && (
-                            <li className="idx-qa-empty">No Q&amp;As saved yet.</li>
-                          )}
-                          {[...entry.qaPairs]
-                            .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
-                            .map((qa) => (
-                              <QACard
-                                key={qa.id}
-                                qa={qa}
-                                entryId={entry.id}
-                                entry={entry}
-                                isFocused={false}
-                              />
-                            ))
-                          }
-                        </ul>
-                        <RelatedPassages entry={entry} />
-                      </>
-                    )}
-                  </div>
-                )
-              })}
+              {items.map((entry) => renderEntryCard(entry))}
             </section>
           ))}
         </div>
@@ -1120,119 +1386,7 @@ export default function HighlightIndex() {
                     {subEntries
                       .slice()
                       .sort((a, b) => a.pageNumber - b.pageNumber)
-                      .map((entry) => {
-                        const isOpen    = openEntries[entry.id] === true
-                        const isFocused = entry.id === focusedEntryId
-                        const qaCount   = entry.qaPairs.length
-                        const sectionLabel = getEntrySectionLabel(entry)
-                        const sectionContext = getEntrySectionContext(entry)
-                        const dueStatus = getDueStatus(entry)
-                        const focusLabel = getEntryFocusLabel(entry)
-
-                        return (
-                          <div
-                            key={entry.id}
-                            ref={(el) => { if (el) entryRefs.current[entry.id] = el }}
-                            className={`idx-entry ${entry.starred ? 'starred' : ''} ${isFocused ? 'focused' : ''}`}
-                          >
-                            <div
-                              className="idx-entry-header"
-                              onClick={() => setOpenEntries((prev) => ({ ...prev, [entry.id]: !isOpen }))}
-                            >
-                              <button
-                                className={`idx-star ${entry.starred ? 'on' : ''}`}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={(e) => { e.stopPropagation(); toggleStarEntry(entry.id) }}
-                              >
-                                {entry.starred ? '★' : '☆'}
-                              </button>
-
-                              <div className="idx-entry-text-wrap">
-                                <div className="idx-entry-section-row">
-                                  <button
-                                    className="idx-page-num small"
-                                    title={`Jump to page ${entry.pageNumber}`}
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={(e) => { e.stopPropagation(); requestNav(entry.pageNumber) }}
-                                  >
-                                    p.{entry.pageNumber}
-                                  </button>
-                                  {sectionLabel && <span className="idx-entry-section-label">{sectionLabel}</span>}
-                                  <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
-                                </div>
-                                {sectionContext && (
-                                  <div className="idx-entry-section-context">{sectionContext}</div>
-                                )}
-                                {focusLabel && (
-                                  <div className="idx-entry-focus">
-                                    <span className="idx-entry-focus-title">{focusLabel.title}</span>
-                                    <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
-                                  </div>
-                                )}
-                                <span className="idx-entry-source-label">Highlight</span>
-                                {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
-                                  <button
-                                    key={ti}
-                                    className="idx-entry-text"
-                                    title="Jump to this passage in the PDF"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      requestNav(entry.pageNumber)
-                                      setFlashHighlight({ text, pageNumber: entry.pageNumber })
-                                    }}
-                                  >
-                                    {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
-                                  </button>
-                                ))}
-                                <span className="idx-entry-meta">
-                                  <span className="idx-entry-meta-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
-                                  {entry.qaPairs.some((q) => q.starred) && (
-                                    <span className="idx-has-stars">· ★ {entry.qaPairs.filter((q) => q.starred).length}</span>
-                                  )}
-                                  {entry.note    && <span className="idx-meta-flag">✎</span>}
-                                  {entry.flagged && <span className="idx-meta-flag">🚩</span>}
-                                  {entry.anchored && <span className="idx-meta-flag">⚓</span>}
-                                </span>
-                              </div>
-
-                              <div className="idx-entry-right">
-                                <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
-                                <button
-                                  className="idx-del"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={(e) => { e.stopPropagation(); deleteIndexEntry(entry.id) }}
-                                  title="Delete"
-                                >✕</button>
-                              </div>
-                            </div>
-
-                            {isOpen && (
-                              <>
-                                <div className="idx-entry-expanded-header">
-                                  <ConceptChips entry={entry} navigable={true} />
-                                  <CurationBar entry={entry} />
-                                </div>
-                                <AnnotationField entry={entry} />
-                                <SynthesisSection entry={entry} />
-                                <ul className="idx-qa-list">
-                                  {entry.qaPairs.length === 0 && (
-                                    <li className="idx-qa-empty">No Q&amp;As saved yet.</li>
-                                  )}
-                                  {[...entry.qaPairs]
-                                    .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
-                                    .map((qa) => (
-                                      <QACard key={qa.id} qa={qa} entryId={entry.id} entry={entry} isFocused={false} />
-                                    ))
-                                  }
-                                </ul>
-                                <RelatedPassages entry={entry} />
-                              </>
-                            )}
-                          </div>
-                        )
-                      })
-                    }
+                      .map((entry) => renderEntryCard(entry))}
                   </div>
                 ))}
               </section>
@@ -1319,114 +1473,42 @@ export default function HighlightIndex() {
                   {cEntries
                     .slice()
                     .sort((a, b) => a.pageNumber - b.pageNumber)
-                    .map((entry) => {
-                      const isOpen    = openEntries[entry.id] === true
-                      const isFocused = entry.id === focusedEntryId
-                      const qaCount   = entry.qaPairs.length
-                      const sectionLabel = getEntrySectionLabel(entry)
-                      const sectionContext = getEntrySectionContext(entry)
-                      const dueStatus = getDueStatus(entry)
-                      const focusLabel = getEntryFocusLabel(entry)
-
-                      return (
-                        <div
-                          key={`${concept}-${entry.id}`}
-                          ref={(el) => { if (el) entryRefs.current[entry.id] = el }}
-                          className={`idx-entry ${entry.starred ? 'starred' : ''} ${isFocused ? 'focused' : ''}`}
-                        >
-                          <div
-                            className="idx-entry-header"
-                            onClick={() => setOpenEntries((prev) => ({ ...prev, [entry.id]: !isOpen }))}
-                          >
-                            <button
-                              className={`idx-star ${entry.starred ? 'on' : ''}`}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={(e) => { e.stopPropagation(); toggleStarEntry(entry.id) }}
-                            >
-                              {entry.starred ? '★' : '☆'}
-                            </button>
-
-                              <div className="idx-entry-text-wrap">
-                                <div className="idx-entry-section-row">
-                                  <button
-                                  className="idx-page-num small"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={(e) => { e.stopPropagation(); requestNav(entry.pageNumber) }}
-                                  title={`Jump to page ${entry.pageNumber}`}
-                                  >
-                                    p.{entry.pageNumber}
-                                  </button>
-                                {sectionLabel && (
-                                  <span className="idx-entry-section-label">{sectionLabel}</span>
-                                )}
-                                <span className={`idx-due-badge idx-due-badge--${dueStatus.tone}`}>{dueStatus.label}</span>
-                              </div>
-                              {sectionContext && (
-                                <div className="idx-entry-section-context">{sectionContext}</div>
-                              )}
-                              {focusLabel && (
-                                <div className="idx-entry-focus">
-                                  <span className="idx-entry-focus-title">{focusLabel.title}</span>
-                                  <span className="idx-entry-focus-subtitle">{focusLabel.subtitle}</span>
-                                </div>
-                              )}
-                              {(entry.highlightTexts || [entry.highlightText]).map((text, ti) => (
-                                <button
-                                  key={ti}
-                                  className="idx-entry-text"
-                                  title="Jump to this passage in the PDF"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    requestNav(entry.pageNumber)
-                                    setFlashHighlight({ text, pageNumber: entry.pageNumber })
-                                  }}
-                                >
-                                  {text.slice(0, 80)}{text.length > 80 ? '…' : ''}
-                                </button>
-                              ))}
-                              <span className="idx-entry-meta">
-                                <span className="idx-entry-meta-count">{qaCount} Q&amp;A{qaCount !== 1 ? 's' : ''}</span>
-                                {entry.note    && <span className="idx-meta-flag">✎</span>}
-                                {entry.flagged && <span className="idx-meta-flag">🚩</span>}
-                              </span>
-                            </div>
-
-                            <div className="idx-entry-right">
-                              <span className="idx-chevron">{isOpen ? '▾' : '▸'}</span>
-                            </div>
-                          </div>
-
-                          {isOpen && (
-                            <>
-                              {/* Other concepts (not the one being browsed) + curation in expanded body */}
-                              <div className="idx-entry-expanded-header">
-                                <ConceptChips
-                                  entry={{ ...entry, concepts: entry.concepts.filter((c) => c !== activeConcept) }}
-                                  navigable={true}
-                                />
-                                <CurationBar entry={entry} />
-                              </div>
-                              <AnnotationField entry={entry} />
-                              <SynthesisSection entry={entry} />
-                              <ul className="idx-qa-list">
-                                {[...entry.qaPairs]
-                                  .sort((a, b) => (Number(b.starred) - Number(a.starred)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)))
-                                  .map((qa) => (
-                                  <QACard key={qa.id} qa={qa} entryId={entry.id} entry={entry} isFocused={false} />
-                                  ))
-                                }
-                              </ul>
-                              <RelatedPassages entry={entry} />
-                            </>
-                          )}
-                        </div>
-                      )
-                    })
-                  }
+                    .map((entry) => renderEntryCard(entry, { key: `${concept}-${entry.id}`, conceptToHide: activeConcept }))}
                 </section>
               ))}
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── BY INTENT view ─────────────────────────────────────────────────── */}
+      {view === 'intent' && (
+        <div className="idx-body">
+          {intentGroups.length === 0 ? (
+            <div className="idx-empty idx-empty-inline">
+              <span>No study questions are available yet.</span>
+              <span className="idx-empty-hint">
+                Save a question to the index to organize it by learning intent.
+              </span>
+            </div>
+          ) : (
+            intentGroups.map(({ intent, entries: groupedEntries }) => {
+              const intentMeta = getQuestionIntentMeta({ questionIntent: intent })
+              return (
+                <section key={intent} className="idx-concept-section">
+                  <div className="idx-concept-heading">
+                    <span className="idx-concept-heading-tag idx-concept-heading-tag--intent">{intentMeta.label}</span>
+                    <span className="idx-page-count">
+                      {groupedEntries.length} passage{groupedEntries.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  {groupedEntries
+                    .slice()
+                    .sort((a, b) => a.pageNumber - b.pageNumber)
+                    .map((entry) => renderEntryCard(entry, { key: `${intent}-${entry.id}` }))}
+                </section>
+              )
+            })
           )}
         </div>
       )}

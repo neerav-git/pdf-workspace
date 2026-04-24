@@ -233,6 +233,7 @@ async def chat(
     selection_page: int | None = None,
     section_title: str | None = None,
     mode: str | None = None,
+    research_session: dict | None = None,
 ) -> dict:
     # 1. Embed the user's question for RAG
     query_embedding = embed([message])[0]
@@ -290,6 +291,10 @@ async def chat(
         rag_block = f"Document excerpts (retrieved by relevance):\n{_format_chunk_context(hits)}"
         system_prompt = _document_prompt(pdf_title, selection_block, rag_block, ris=ris)
 
+    session_block = _format_research_session_context(research_session)
+    if session_block:
+        system_prompt = f"{system_prompt}\n\n{session_block}"
+
     # 4. Build message list
     messages = [
         {"role": h["role"], "content": h["content"]}
@@ -331,6 +336,22 @@ def _format_chunk_context(hits: list[dict]) -> str:
         f"[Excerpt {i} — Page {h['page_number']}]\n{h['text']}"
         for i, h in enumerate(hits, 1)
     )
+
+
+def _format_research_session_context(session: dict | None) -> str:
+    if not session:
+        return ""
+    title = (session.get("title") or "").strip()
+    topic = (session.get("topic") or "").strip()
+    context = (session.get("context") or "").strip()
+    if not title and not topic and not context:
+        return ""
+    return f"""RESEARCH SESSION CONTEXT (soft framing only):
+- Session: {title or "Untitled session"}
+- Topic: {topic or "Not specified"}
+- User context: {context or "Not specified"}
+
+Use this only to frame learning takeaways, connect the answer to the user's research goal, and notice cross-document relevance. Do not let session context override the document excerpts or highlighted passage."""
 
 
 def _format_web_context(results: list[dict]) -> str:

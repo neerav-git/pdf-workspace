@@ -1,0 +1,345 @@
+================================================================
+DEEP-FIX PLAN — STATUS SNAPSHOT
+Date: 2026-04-22
+Plan source: memory/deep_fix_plan_2026-04-22.md (v2)
+================================================================
+
+Live state
+----------
+Current branch / HEAD : main @ 1c0c443
+Alembic head          : step3_reveal_used
+Target PDF for data   : Paper Plain (pdf_id = 5)
+
+
+----------------------------------------------------------------
+0. WHERE WE ARE
+----------------------------------------------------------------
+
+Shipped : Steps 1, 2, 3
+Pending : Steps 4, 5
+
+Thesis-critical risk after step 3:
+  - Primary empirical claim (LLM-graded recall > rereading) is now
+    MEASURABLE under controlled conditions: review_log carries
+    reveal_used + recall_mode, and the retrieval UI enforces "question
+    first, source hidden" by default.
+  - Before pilot data collection, rubric + prompt versions must still
+    be frozen (Rule 3) — *this is not yet done*.
+
+
+----------------------------------------------------------------
+1. SHIPPED — STEP 1  (commit 73a1351, 2026-04-22)
+    "First-class card schema contract"
+----------------------------------------------------------------
+
+Goal: Remove the ACTION_MAP prefix-matching duplication across the
+frontend and make study_question a server-owned, canonical field.
+
+Schema delta on qa_pairs:
+  card_type VARCHAR(16) NOT NULL DEFAULT 'manual'
+    Enum: manual | explain | simplify | terms | summarise | quiz | chat
+  study_question TEXT NULL
+    Canonical standalone question. Display order:
+    study_question || original_question || question
+  rhetorical_facet VARCHAR(16) NULL    (empty — step 4 fills)
+  facet_confidence FLOAT NULL          (empty — step 4 fills)
+  origin_chat_message_id INTEGER NULL  (empty — step 5 fills)
+
+Backend:
+  - card_service.create_card(...) is the single QA write path.
+  - derive_study_question(...) canonicalizes by card_type
+    (quiz -> extracted from answer; manual -> cleaned; action -> Haiku rewrite).
+
+Frontend:
+  - ACTION_MAP / ACTION_PREFIXES / detectAction / extractQuizQuestion /
+    client-side prepareStudyCardQuestion all deleted.
+  - resolveDisplayQuestion uses the field-precedence chain above.
+
+Data:
+  - Paper Plain (pdf_id=5): 13 QAs backfilled in place; no raw ACTION
+    prompts surface in the review UI.
+
+
+----------------------------------------------------------------
+2. SHIPPED — STEP 2  (commit 51bc929, 2026-04-22)
+    "Dedup gate + soft-delete + write-time quality floor"
+----------------------------------------------------------------
+
+Goal: Stop the review queue from being polluted with near-duplicates;
+preserve all rows for research joinability; give the user a one-click
+way out of accidental re-saves.
+
+Schema delta:
+  qa_pairs.archived_at TIMESTAMPTZ NULL
+  session_events.meta_json JSONB NULL
+  Partial index ix_qa_pairs_due_at_active rebuilt to
+    state != 'suspended' AND archived_at IS NULL
+
+Backend:
+  card_service:
+    DEDUP_COSINE_THRESHOLD = 0.85 (MiniLM-L6, L2-normalised -> dot = cos).
+    find_duplicate(db, highlight_id, study_question) → nearest non-archived
+    QA on same highlight above threshold; attaches _similarity.
+    DuplicateStudyQuestion exception → router 409.
+    ExtractionFailed exception (strict=True path) → router 422.
+    create_card(..., force=False) — force bypass.
+  routers/highlights.py:
+    POST /api/highlights/{id}/qa?force=<bool>
+      201 on success
+      409 {code, existing_qa_id, existing_study_question, similarity}
+      422 {code, card_type, message}
+    POST /api/qa/{id}/merge-answer  — "merge" branch of the 409 modal
+    DELETE /api/qa/{id} — now soft-delete (sets archived_at)
+    POST /api/session-events/dedup-choice — research telemetry
+  All read surfaces (list_highlights, /review/due, /pdfs/{id}/review/due,
+  /qa/{id}/review-data, /review/stats, /review/submit) filter archived.
+  Research export is DELIBERATELY unchanged — archived rows stay in the dataset.
+
+Cleanup script:
+  backend/scripts/cleanup_duplicates.py
+    Greedy single-link clustering on study_question embeddings.
+    Survivor = max(reps, then newest created_at).
+    Re-parents review_log.qa_pair_id to survivor; soft-deletes losers.
+    Ran on Paper Plain: hl=16 collapsed {24,25,26} into survivor 26;
+    hl=10 left alone (cos 0.61 below threshold).
+    Active queue 13 → 11.
+
+Frontend:
+  - api/highlights.js: postQA(id, body, {force}), mergeAnswerIntoQA, logDedupChoice.
+  - store/index.js: saveToIndex returns {duplicate:true, ...} on 409 instead of
+    throwing; new resolveDuplicateConflict({choice, duplicate, payload})
+    handles open_existing | merge | force_save | dismiss; each path logs to
+    session_events (best-effort).
+  - components/DuplicateStudyQuestionModal.jsx + .css — 3-button dialog,
+    SCIM D1 compliant (one-click dismiss, no forced friction).
+  - components/ChatPanel.jsx — wires the modal into the save-to-index flow.
+
+Verification:
+  playwright-tests/step2_dedup_verify.js — 6/6 passing.
+
+
+----------------------------------------------------------------
+3. SHIPPED — STEP 3  (commit 1c0c443, 2026-04-22)
+    "Recall-first review UI + retrieval-mode telemetry"
+----------------------------------------------------------------
+
+Goal: Unblock the thesis's primary claim by making Phase 1 a real
+recall event — not a recognition / re-read event. Log enough signal
+that the retention regression can restrict to free-recall rows.
+
+Schema delta on review_log:
+  reveal_used BOOLEAN NOT NULL DEFAULT FALSE
+  recall_mode VARCHAR(12) NULL    (free_recall | cloze | assisted)
+Backfill: legacy rows marked reveal_used=TRUE, recall_mode='assisted' so
+they don't silently pollute a free-recall cohort.
+
+Backend:
+  POST /api/review/submit — SubmitReviewRequest accepts reveal_used and
+  recall_mode (validated against the enum; unknown → 422). Both persist
+  to review_log on the same write as the grade.
+  research/export includes both fields.
+
+Frontend — ReviewSession.jsx Phase 1 layout:
+  [card_type badge if action]
+  study_question
+  ConfidenceRating
+  recall textarea
+  [Reveal passage] button (only for manual/quiz/chat)
+  Submit
+
+Reveal state machine (revealState):
+  hidden   (initial)   → reveal_used=false, recall_mode='free_recall'
+  cloze    (1st click) → reveal_used=true,  recall_mode='cloze'
+  assisted (sub-opt)   → reveal_used=true,  recall_mode='assisted'
+Resets on every handleNext.
+
+Action cards (explain / simplify / terms / summarise) NEVER get a
+reveal button in Phase 1 — source surfaces only in Phase 2.
+
+Phase 2: appended a cooler-accented .rv-source--graded panel below the
+expected answer so action cards still get their text check.
+
+Removed: ReviewModeToggle + reviewMode state + .rv-mode-* CSS.
+
+Dev-only instrumentation:
+  main.jsx exposes window.__APP_STORE__ when import.meta.env.DEV so
+  Playwright tests can target specific cards without mutating live FSRS
+  state.
+
+Verification:
+  playwright-tests/step3_recall_first_verify.js — 8/8 passing.
+
+Rule 3 honored: this shipped BEFORE pilot data collection.
+
+
+================================================================
+4. PENDING — STEP 4  (P1 leverage; P1 for Tier 1B learning graph)
+   "Rhetorical-facet + topic ontology (SCIM D2 + D6)"
+================================================================
+
+Severity: P1. Not thesis-blocking, but without it the index remains
+noisy and the eventual learning graph has no principled grouping.
+
+Scope — three layers:
+
+  (a) Layer 1 — Rhetorical Facet (SCIM D2 — peer-reviewed, do NOT invent)
+      qa_pairs already has rhetorical_facet + facet_confidence (step 1).
+      New work:
+        - Haiku classifier at card creation. Prompt returns
+          {label, confidence} over
+          {objective | novelty | method | result | background | uncategorized}.
+        - D6 GUARD: if confidence < 0.7 set label = 'uncategorized'.
+          Better to show no badge than a wrong one.
+        - Color palette (from Scim paper):
+          Objective green / Novelty orange / Method blue / Result red /
+          Background grey.
+        - Render the facet badge in the index AND in ReviewSession Phase 1.
+          The Phase 1 badge slot already exists (.rv-question-badges) — just
+          append.
+
+  (b) Layer 2 — Per-PDF Topic Ontology (5–8 items)
+      New column:  pdf_documents.ontology_json JSONB NULL
+      New endpoint: POST /api/pdfs/{id}/ontology
+        Haiku generates 5–8 topic labels ONCE per PDF from
+        abstract + TOC + first N chunks. Rate-limit 1/24h/PDF.
+      Per-QA tagging becomes classification INTO this ontology
+        (multi-label, ≤ 3 tags + optional "other").
+      Ontology is regenerable; old classifications invalidated when it changes.
+
+  (c) Layer 3 — Cluster Tag (derived, no schema churn on highlights)
+      New column:  highlight_entries.cluster_tag VARCHAR(200) NULL
+      Strategy at write time:
+        If deep_section_path[0].title is non-junk per regex
+          /^(arXiv|T\d|Fig|\d+\s)/i → use it.
+        Else nearest ontology topic by embedding.
+      Result: By-Section view "Other Passages" bucket dissolves into
+      meaningful topic clusters.
+
+FSRS due-ordering tweak (SCIM D3 "long middle"):
+  When multiple cards are due, order by (due_at, section_diversity) —
+  small penalty if previous review was from the same section.
+  ~15-line change in review_service.py.
+
+Backfill endpoint:
+  POST /api/pdfs/{id}/recompute-facets-and-concepts
+  Regenerates ontology + reclassifies all existing QAs. Run once per PDF.
+  Also replaces any study_question that equals a _FALLBACK_STUDY_QUESTION
+  template with a Haiku-specific rewrite.
+
+Done-criteria (from plan §Test Plan):
+  - Concepts tab label shows "Facets N · Topics M" not "Concepts34".
+  - Every card has rhetorical_facet set (possibly 'uncategorized').
+  - cluster_tag populated for every entry.
+  - "Other Passages" bucket empty in By-Section view.
+
+Budget estimate: 1–2 days.
+
+
+================================================================
+5. PENDING — STEP 5  (P1 architecture; P2 for empirical claim)
+   "Backend chat persistence + session_events"
+================================================================
+
+Severity: P1 architecture, P2 empirical. Biggest user-facing gap after
+steps 1–4 but does not block thesis measurement.
+
+New schema:
+  chat_sessions
+    id                  PK
+    pdf_id              FK
+    started_at, ended_at
+    focus_cluster_tag   NULL   (joins to step-4 cluster_tag)
+  chat_messages
+    id                  PK
+    session_id          FK → chat_sessions
+    pdf_id              FK
+    role                user | assistant
+    content             TEXT
+    meta_json           JSONB   (sources, tool calls, etc.)
+    sources_json        JSONB   (retrieval citations)
+    created_at
+
+API:
+  POST /api/chat                  — persists session + messages; returns
+                                    {message_id, session_id}.
+  GET  /api/pdfs/{id}/chat/history?limit=N&session_id=X
+  DELETE /api/pdfs/{id}/chat/history  (replaces current Clear button path)
+  POST /api/chat/new-session      — explicit thread break.
+
+Frontend:
+  selectPdf hydrates from backend.
+  localStorage partialize(chatHistoriesByPdf) demoted to offline-first
+  cache only, not truth.
+
+Research wiring:
+  session_events row per chat turn
+    session_type='chat', pdf_id, message_id, tokens_in, tokens_out.
+  Research export gains optional chat_messages table (opt-in per Rule 3).
+  qa_pairs.origin_chat_message_id (already exists, step 1) now populated
+  when a card is logged from chat via ChatPanel's saveToIndex path.
+
+Done-criteria (from plan §Test Plan):
+  - /api/pdfs/5/chat/history returns array (not 404).
+  - Fresh browser shows chat history after selectPdf.
+  - session_events has session_type='chat' rows.
+
+Budget estimate: 1–2 days.
+
+
+================================================================
+6. OPEN CONSTRAINTS & DEPENDENCIES
+================================================================
+
+Rule 3 (research/CLAUDE.md §2.3)
+  Before pilot data collection begins, ALL of the following must be frozen
+  and recorded in the DB:
+    - rubric_versions row with frozen_at populated
+    - prompt_versions row(s) with frozen_at populated
+    - exact model version string pinned (e.g. claude-sonnet-4-20250514,
+      NOT claude-sonnet-latest)
+  Currently: rubric and prompts exist but frozen_at timestamps are NOT set.
+  This is a blocker for launching the RCT — must happen after steps 4+5
+  stabilize and before any participant sees a card.
+
+Parallelization
+  Plan recommends steps 1 → 2 → 3 serial (done). Steps 4 and 5 are
+  independent of each other and can run in parallel.
+
+Out of scope (rejected or deferred)
+  - Knowledge graph of document structure (forbidden by North Star
+    Karpathy reframe — build the LEARNING graph, not the document graph).
+  - Inventing our own rhetorical ontology (use SCIM's 4-facet verbatim).
+  - Hard-deleting duplicate QAs (step 2 soft-deletes so review_log joins).
+  - Progressive summarization, footnotes, sharing, mobile.
+
+Verified infrastructure
+  - Alembic migrations: all three steps have forward + downgrade paths.
+  - Playwright verification: step2 6/6, step3 8/8 passing.
+  - Research export endpoint: includes every step's telemetry.
+  - Backend reload: uvicorn --reload is live; no restarts needed.
+
+
+================================================================
+7. SUGGESTED NEXT MOVE
+================================================================
+
+Either:
+
+  (a) Ship Step 4 next. Highest leverage after step 3 because it both
+      cleans up the index (user-visible win) AND sets up the learning
+      graph (Tier 1B unlock). ~1–2 days.
+
+  (b) Ship Step 5 next. Smaller thesis leverage but removes the "chat
+      resets on refresh" annoyance and unblocks cross-device continuity.
+      Also populates origin_chat_message_id, closing the step-1
+      schema loop. ~1–2 days.
+
+  (c) Run pilot readiness checks instead: freeze rubric + prompts,
+      pin model version, wire IRR sampling. This is what unblocks the
+      actual study — steps 4/5 are strictly incremental after.
+
+Recommendation: (a) Step 4. It's the last piece that touches the
+capture-side noise floor, and once done, (c) pilot-readiness is the
+single remaining gate before data collection.
+
+================================================================

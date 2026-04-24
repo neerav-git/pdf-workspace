@@ -5,6 +5,7 @@ import { sendMessage } from '../api/chat'
 import { resolveChunk } from '../api/pdfs'
 import { useVoiceRecorder, RECORDER_STATE } from '../hooks/useVoiceRecorder'
 import HighlightIndex from './HighlightIndex'
+import ComparativeAnalysis from './ComparativeAnalysis'
 import DuplicateStudyQuestionModal from './DuplicateStudyQuestionModal'
 import { linkifyPageCitations } from '../utils/linkifyPages'
 import './ChatPanel.css'
@@ -56,6 +57,7 @@ function extendToSentenceBoundary(selectionText, chunkText) {
 export default function ChatPanel() {
   const {
     selectedPdf,
+    researchSessions,
     chatHistory,
     addMessage,
     clearHistory,
@@ -387,6 +389,9 @@ export default function ChatPanel() {
 
   const pdfNotes = notes.filter((n) => n.pdfId === selectedPdf?.id)
   const pdfIndexCount = highlightIndex.filter((e) => e.pdfId === selectedPdf?.id).length
+  const activeSession = selectedPdf
+    ? researchSessions.find((session) => (session.pdfs || []).some((pdf) => pdf.id === selectedPdf.id))
+    : null
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -408,6 +413,13 @@ export default function ChatPanel() {
             Index
             {pdfIndexCount > 0 && <span className="tab-badge">{pdfIndexCount}</span>}
           </button>
+          <button
+            className={`chat-tab ${activeTab === 'compare' ? 'active' : ''}`}
+            onClick={() => setActiveTab('compare')}
+          >
+            Compare
+            {activeSession?.pdf_count > 1 && <span className="tab-badge">{activeSession.pdf_count}</span>}
+          </button>
         </div>
         {selectedPdf && (
           <span className="chat-pdf-name" title={selectedPdf.title}>{selectedPdf.title}</span>
@@ -426,6 +438,9 @@ export default function ChatPanel() {
 
       {/* Index tab */}
       {activeTab === 'index' && <HighlightIndex />}
+
+      {/* Compare tab */}
+      {activeTab === 'compare' && <ComparativeAnalysis />}
 
       {/* Chat tab */}
       {activeTab === 'chat' && (

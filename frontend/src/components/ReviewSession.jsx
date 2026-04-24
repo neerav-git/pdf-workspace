@@ -201,7 +201,14 @@ function ClozePassage({ text }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ReviewSession() {
-  const { reviewScope, closeReview } = useAppStore()
+  const {
+    reviewScope,
+    closeReview,
+    requestNav,
+    setFlashHighlight,
+    setWorkspaceMode,
+    setIndexFocus,
+  } = useAppStore()
 
   const [cards, setCards]         = useState([])
   const [idx, setIdx]             = useState(0)
@@ -211,6 +218,7 @@ export default function ReviewSession() {
   const [gradeResult, setGradeResult] = useState(null)
   const [submitting, setSubmitting]   = useState(false)
   const [error, setError]         = useState(null)
+  const [contextPassageExpanded, setContextPassageExpanded] = useState(false)
   // Phase 1 reveal state (step 3).
   //   'hidden'    — source panel not shown. recall_mode → 'free_recall'.
   //   'cloze'     — source panel shown with ~30% masked. recall_mode → 'cloze'.
@@ -266,6 +274,7 @@ export default function ReviewSession() {
   useEffect(() => {
     if (phase === 'recall') {
       cardShownAt.current = Date.now()
+      setContextPassageExpanded(false)
       setTimeout(() => textareaRef.current?.focus(), 50)
     }
   }, [phase, idx])
@@ -325,6 +334,72 @@ export default function ReviewSession() {
       handleSubmit()
     }
   }
+
+  const normalizeQuestionContext = (row) => {
+    if (!row || typeof row !== 'object') return null
+    const sourceLocator = row.sourceLocator && typeof row.sourceLocator === 'object'
+      ? row.sourceLocator
+      : row.source_locator && typeof row.source_locator === 'object'
+      ? row.source_locator
+      : {}
+
+    return {
+      questionOrigin: row.questionOrigin || row.question_origin || 'manual',
+      questionScope: row.questionScope || row.question_scope || 'document',
+      questionIntent: row.questionIntent || row.question_intent || 'takeaway',
+      contextRequired: Boolean(row.contextRequired ?? row.context_required),
+      contextSummary: row.contextSummary || row.context_summary || '',
+      sourceExcerptShort: row.sourceExcerptShort || row.source_excerpt_short || '',
+      sourceExcerptFull: row.sourceExcerptFull || row.source_excerpt_full || '',
+      sourceLocator: {
+        page: sourceLocator.page ?? null,
+        sectionTitle: sourceLocator.sectionTitle ?? sourceLocator.section_title ?? null,
+        highlightId: sourceLocator.highlightId ?? sourceLocator.highlight_id ?? null,
+        chatTurnId: sourceLocator.chatTurnId ?? sourceLocator.chat_turn_id ?? null,
+        pdfId: sourceLocator.pdfId ?? sourceLocator.pdf_id ?? null,
+      },
+      contextStatus: row.contextStatus || row.context_status || 'weak',
+      reviewPromptMode: row.reviewPromptMode || row.review_prompt_mode || 'question_only',
+      needsDisambiguation: Boolean(row.needsDisambiguation ?? row.needs_disambiguation),
+    }
+  }
+
+  const openSourceInReader = useCallback((currentCard, questionContext = null) => {
+    const pageNumber = questionContext?.sourceLocator?.page || currentCard.page_number || null
+    const previewText = (
+      questionContext?.sourceExcerptShort ||
+      questionContext?.sourceExcerptFull ||
+      currentCard.highlight_text ||
+      currentCard.source_passage ||
+      ''
+    )
+    setWorkspaceMode('reader')
+    if (pageNumber) {
+      requestNav(pageNumber)
+      if (previewText) {
+        setFlashHighlight({ text: previewText, pageNumber })
+      }
+    }
+    closeReview()
+  }, [closeReview, requestNav, setFlashHighlight, setWorkspaceMode])
+
+  const openRepairInIndex = useCallback((currentCard, questionContext = null) => {
+    const pageNumber = questionContext?.sourceLocator?.page || currentCard.page_number || null
+    const previewText = (
+      questionContext?.sourceExcerptShort ||
+      currentCard.highlight_text ||
+      currentCard.source_passage ||
+      ''
+    )
+    setIndexFocus({
+      entryId: currentCard.highlight_id || null,
+      qaId: currentCard.id,
+      text: previewText,
+      pageNumber,
+    })
+    setWorkspaceMode('index')
+    closeReview()
+  }, [closeReview, setIndexFocus, setWorkspaceMode])
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -397,6 +472,18 @@ export default function ReviewSession() {
   if (phase === 'recall') {
     const canSubmit = recallText.trim().length > 0 && confidence > 0 && !submitting
     const { question: displayQuestion, isAction, actionType } = resolveDisplayQuestion(card)
+    const questionContext = normalizeQuestionContext(card.question_context || card.questionContext)
+    const preAnswerPassage = (
+      questionContext?.sourceExcerptFull ||
+      questionContext?.sourceExcerptShort ||
+      card.source_passage ||
+      card.highlight_text ||
+      ''
+    )
+    const sourceLocationLabel = [
+      questionContext?.sourceLocator?.sectionTitle || card.section_title || null,
+      (questionContext?.sourceLocator?.page || card.page_number) ? `p. ${questionContext?.sourceLocator?.page || card.page_number}` : null,
+    ].filter(Boolean).join(' · ')
 
     // A card whose study_question is one of the generic fallback templates
     // (shipped when Haiku couldn't derive a specific prompt) carries no
@@ -478,6 +565,59 @@ export default function ReviewSession() {
             </div>
           )}
 
+          {questionContext?.needsDisambiguation && (
+            <div className="rv-repair-warning">
+              <div className="rv-repair-warning-copy">
+                <span className="rv-repair-warning-label">Needs context repair</span>
+                <p>This question is still reviewable, but its source grounding is weak. Use the Index to repair the context before relying on it as a stable study card.</p>
+              </div>
+              <button
+                type="button"
+                className="rv-btn rv-btn--secondary"
+                onClick={() => openRepairInIndex(card, questionContext)}
+              >
+                Open in Index
+              </button>
+            </div>
+          )}
+
+          {questionContext?.contextRequired && questionContext.contextSummary && (
+            <div className="rv-context-block">
+              <div className="rv-context-header">
+                <span className="rv-context-label">Question context</span>
+                {sourceLocationLabel && <span className="rv-context-location">{sourceLocationLabel}</span>}
+              </div>
+              <p className="rv-context-summary">{questionContext.contextSummary}</p>
+            </div>
+          )}
+
+          {questionContext?.reviewPromptMode === 'question_plus_passage' && preAnswerPassage && (
+            <div className="rv-context-passage">
+              <div className="rv-context-header">
+                <span className="rv-context-label">Source context</span>
+                <div className="rv-context-actions">
+                  <button
+                    type="button"
+                    className="rv-context-toggle"
+                    onClick={() => setContextPassageExpanded((prev) => !prev)}
+                  >
+                    {contextPassageExpanded ? 'Hide passage' : 'Show passage'}
+                  </button>
+                  <button
+                    type="button"
+                    className="rv-context-toggle"
+                    onClick={() => openSourceInReader(card, questionContext)}
+                  >
+                    Open source in reader
+                  </button>
+                </div>
+              </div>
+              {contextPassageExpanded && (
+                <p className="rv-context-passage-text">{cleanHighlightText(preAnswerPassage)}</p>
+              )}
+            </div>
+          )}
+
           {/* Fallback-template hint: shown only when the card has a generic
               prompt but no passage (edge case — without highlight_text we
               can't auto-show it, so we explain what's going on). */}
@@ -503,6 +643,18 @@ export default function ReviewSession() {
             />
             <div className="rv-recall-hint">⌘↵ to submit</div>
           </div>
+
+          {(questionContext?.sourceLocator?.page || card.page_number) && (
+            <div className="rv-reader-link-row">
+              <button
+                type="button"
+                className="rv-context-toggle"
+                onClick={() => openSourceInReader(card, questionContext)}
+              >
+                Open source in reader
+              </button>
+            </div>
+          )}
 
           {/* Reveal affordance — only for non-action cards with a specific
               prompt. Any click flips reveal_used for this review_log row. */}
@@ -656,6 +808,13 @@ export default function ReviewSession() {
             <div className="rv-source rv-source--graded">
               <div className="rv-source-header">
                 <span className="rv-source-label">Source passage</span>
+                <button
+                  type="button"
+                  className="rv-context-toggle"
+                  onClick={() => openSourceInReader(card, normalizeQuestionContext(card.question_context || card.questionContext))}
+                >
+                  Open source in reader
+                </button>
               </div>
               <p className="rv-source-text">{cleanHighlightText(card.highlight_text)}</p>
               {card.section_title && (

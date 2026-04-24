@@ -24,6 +24,21 @@ export const postQA = (highlightId, body, { force = false } = {}) =>
 export const patchQA = (qaId, body) =>
   client.patch(`/qa/${qaId}`, body).then((r) => r.data)
 
+export const repairQAContext = (qaId) =>
+  client.post(`/qa/${qaId}/repair-context`).then((r) => r.data)
+
+export const attachQASource = (qaId, body = {}) =>
+  client.post(`/qa/${qaId}/attach-source`, body).then((r) => r.data)
+
+export const reframeStudyQuestion = (qaId, body = {}) =>
+  client.post(`/qa/${qaId}/reframe-study-question`, body).then((r) => r.data)
+
+export const convertQAToNote = (qaId) =>
+  client.post(`/qa/${qaId}/convert-to-note`).then((r) => r.data)
+
+export const backfillLegacyContext = (pdfId) =>
+  client.post(`/pdfs/${pdfId}/legacy-context-backfill`).then((r) => r.data)
+
 export const mergeAnswerIntoQA = (qaId, body) =>
   client.post(`/qa/${qaId}/merge-answer`, body).then((r) => r.data)
 

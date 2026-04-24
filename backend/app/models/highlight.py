@@ -62,6 +62,11 @@ class QAPair(Base):
     # Provenance link back to the chat message that produced this card (step 5).
     origin_chat_message_id = Column(Integer)
 
+    # Additive repair/context overrides for legacy cards. This preserves the
+    # original question/answer/source fields while allowing repaired summaries,
+    # reconstructed source windows, and stronger anchors to persist.
+    context_override_json = Column(JSONB, default=dict)
+
     # Soft-delete tombstone (deep-fix step 2). Non-null => excluded from index
     # and review reads; stays in the DB so review_log rows remain join-able.
     archived_at      = Column(DateTime(timezone=True))

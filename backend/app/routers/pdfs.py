@@ -16,6 +16,7 @@ from app.services import (
     toc_service,
     ontology_service,
 )
+from app.services.research_session_service import add_pdf_to_unsorted
 
 router = APIRouter(prefix="/api/pdfs", tags=["pdfs"])
 
@@ -29,6 +30,7 @@ class PDFResponse(BaseModel):
     page_count: int
     chunk_count: int
     ontology_json: Optional[dict[str, Any]] = None
+    research_session_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -82,6 +84,12 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
         chunk_count=len(chunks),
     )
     db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    # New uploads start in the research inbox. Suggestions/moves are explicit
+    # user actions, so title heuristics cannot silently misfile new material.
+    add_pdf_to_unsorted(db, doc, assignment_source="upload")
     db.commit()
     db.refresh(doc)
 

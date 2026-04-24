@@ -15,9 +15,18 @@ import {
 export const useAppStore = create(persist((set, get) => ({
   // PDF library
   pdfs: [],
+  researchSessions: [],
+  suggestPlacementAfterUpload: false,
+  workspaceMode: 'reader',
   selectedPdf: null,
   setPdfs: (pdfs) => set({ pdfs }),
   addPdf: (pdf) => set((s) => ({ pdfs: [pdf, ...s.pdfs] })),
+  setResearchSessions: (researchSessions) => set({
+    researchSessions,
+    pdfs: flattenSessionPdfs(researchSessions),
+  }),
+  setSuggestPlacementAfterUpload: (value) => set({ suggestPlacementAfterUpload: value }),
+  setWorkspaceMode: (workspaceMode) => set({ workspaceMode }),
 
   // Hydrate highlights from DB when a PDF is selected (Research F1: Postgres is source of truth)
   selectPdf: async (pdf) => {
@@ -40,6 +49,21 @@ export const useAppStore = create(persist((set, get) => ({
       set({ highlightIndex: entries.map((row) => normalizeEntry(row, pdf.title)) })
     } catch (e) {
       console.error('Failed to load highlights:', e)
+    }
+  },
+
+  refreshHighlightsForPdf: async (pdf = null) => {
+    const targetPdf = pdf || get().selectedPdf
+    if (!targetPdf?.id) return
+    try {
+      const entries = await fetchHighlights(targetPdf.id)
+      set((s) => ({
+        highlightIndex: s.highlightIndex
+          .filter((entry) => entry.pdfId !== targetPdf.id)
+          .concat(entries.map((row) => normalizeEntry(row, targetPdf.title))),
+      }))
+    } catch (e) {
+      console.error('Failed to refresh highlights:', e)
     }
   },
 
@@ -446,7 +470,11 @@ export const useAppStore = create(persist((set, get) => ({
   name: 'pdf-workspace-chat',
   storage: createJSONStorage(() => localStorage),
   version: 1,
-  partialize: (state) => ({ chatHistoriesByPdf: state.chatHistoriesByPdf }),
+  partialize: (state) => ({
+    chatHistoriesByPdf: state.chatHistoriesByPdf,
+    suggestPlacementAfterUpload: state.suggestPlacementAfterUpload,
+    workspaceMode: state.workspaceMode,
+  }),
 }))
 
 // ── 409 dedup response parser ─────────────────────────────────────────────────
@@ -474,7 +502,7 @@ function interpretDuplicateError(err, { pdfId, highlightId, attemptedStudyQuesti
 
 // ── Normalizers — map DB snake_case to UI camelCase ───────────────────────────
 
-function normalizeEntry(row, pdfTitle = null) {
+export function normalizeEntry(row, pdfTitle = null) {
   return {
     id:               row.id,
     pdfId:            row.pdf_id,
@@ -500,7 +528,20 @@ function normalizeEntry(row, pdfTitle = null) {
   }
 }
 
-function normalizeQA(row) {
+function flattenSessionPdfs(researchSessions = []) {
+  const seen = new Set()
+  const pdfs = []
+  for (const session of researchSessions) {
+    for (const pdf of session.pdfs || []) {
+      if (!pdf?.id || seen.has(pdf.id)) continue
+      seen.add(pdf.id)
+      pdfs.push(pdf)
+    }
+  }
+  return pdfs
+}
+
+export function normalizeQA(row) {
   return {
     id:              row.id,
     cardType:        row.card_type || 'manual',
@@ -516,6 +557,7 @@ function normalizeQA(row) {
     facetConfidence: row.facet_confidence ?? null,
     topicTags:       row.topic_tags || [],
     originChatMessageId: row.origin_chat_message_id ?? null,
+    questionContext: normalizeQuestionContext(row.question_context),
     // FSRS fields (needed by review session — Research B1)
     stability:       row.stability,
     difficulty:      row.difficulty,
@@ -525,5 +567,38 @@ function normalizeQA(row) {
     dueAt:           row.due_at,
     lastReview:      row.last_review,
     createdAt:       row.created_at,
+  }
+}
+
+export function normalizeQuestionContext(row) {
+  if (!row || typeof row !== 'object') return null
+  const sourceLocator = row.source_locator && typeof row.source_locator === 'object'
+    ? {
+        page: row.source_locator.page ?? null,
+        sectionTitle: row.source_locator.section_title ?? null,
+        highlightId: row.source_locator.highlight_id ?? null,
+        chatTurnId: row.source_locator.chat_turn_id ?? null,
+        pdfId: row.source_locator.pdf_id ?? null,
+      }
+    : {
+        page: null,
+        sectionTitle: null,
+        highlightId: null,
+        chatTurnId: null,
+        pdfId: null,
+      }
+
+  return {
+    questionOrigin: row.question_origin || 'manual',
+    questionScope: row.question_scope || 'document',
+    questionIntent: row.question_intent || 'takeaway',
+    contextRequired: Boolean(row.context_required),
+    contextSummary: row.context_summary || '',
+    sourceExcerptShort: row.source_excerpt_short || '',
+    sourceExcerptFull: row.source_excerpt_full || '',
+    sourceLocator,
+    contextStatus: row.context_status || 'weak',
+    reviewPromptMode: row.review_prompt_mode || 'question_only',
+    needsDisambiguation: Boolean(row.needs_disambiguation),
   }
 }

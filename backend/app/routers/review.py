@@ -32,6 +32,7 @@ from app.services.grading_service import (
     reconstruct_card,
     run_grading,
 )
+from app.services.question_context_service import build_question_context
 
 router = APIRouter(tags=["review"])
 
@@ -112,6 +113,7 @@ class DueCardResponse(BaseModel):
     section_title: Optional[str]
     cluster_tag: Optional[str]
     pdf_id: int
+    question_context: Optional[dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
 
@@ -327,6 +329,11 @@ def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
     source_passage = None
     if qa.source_chunk_ids:
         source_passage = get_source_text(qa.source_chunk_ids) or None
+    question_context = build_question_context(
+        qa,
+        h,
+        resolved_source_text=source_passage,
+    )
     return DueCardResponse(
         id               = qa.id,
         highlight_id     = qa.highlight_id,
@@ -351,6 +358,7 @@ def _qa_to_due_response(qa: QAPair) -> DueCardResponse:
         section_title    = h.section_title if h else None,
         cluster_tag      = h.cluster_tag if h else None,
         pdf_id           = h.pdf_id if h else 0,
+        question_context = question_context,
     )
 
 

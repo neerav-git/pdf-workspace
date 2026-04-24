@@ -96,5 +96,13 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         selection_page=req.selection_page,
         section_title=req.section_title,
         mode=req.mode,
+        research_session=(
+            {
+                "title": doc.research_session.title,
+                "topic": doc.research_session.topic,
+                "context": doc.research_session.context,
+            }
+            if doc.research_session else None
+        ),
     )
     return result

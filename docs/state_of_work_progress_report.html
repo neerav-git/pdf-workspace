@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Workspace — State of Work Progress</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0.65in;
+    }
+
+    :root {
+      --bg: #f7f7f5;
+      --ink: #171717;
+      --muted: #505862;
+      --line: #d9ddd6;
+      --panel: #ffffff;
+      --accent: #123b5d;
+      --accent-soft: #e9f1f7;
+      --accent-2: #335c3d;
+      --accent-3: #6b4f12;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Georgia", "Times New Roman", serif;
+      line-height: 1.42;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      min-height: 10.7in;
+      padding: 0.04in 0;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10pt;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      margin-bottom: 0.16in;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 0.12in;
+      line-height: 1.15;
+      font-weight: 700;
+    }
+
+    h1 {
+      font-size: 23pt;
+    }
+
+    h2 {
+      font-size: 18pt;
+      color: var(--accent);
+    }
+
+    h3 {
+      font-size: 11.5pt;
+      color: var(--accent);
+      margin-top: 0.15in;
+    }
+
+    p, li, td, th {
+      font-size: 10.4pt;
+    }
+
+    p {
+      margin: 0 0 0.12in;
+    }
+
+    ul {
+      margin: 0.05in 0 0.14in 0.2in;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 0.06in;
+    }
+
+    .cover {
+      background:
+        linear-gradient(180deg, rgba(18, 59, 93, 0.08), rgba(18, 59, 93, 0)),
+        var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 0.38in;
+      min-height: 9.6in;
+    }
+
+    .cover-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 0.28in;
+      align-items: start;
+    }
+
+    .meta-card,
+    .panel,
+    .callout {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0.16in 0.18in;
+    }
+
+    .meta-card {
+      background: var(--accent-soft);
+    }
+
+    .meta-card table,
+    .repo-table,
+    .feature-table,
+    .stack-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .meta-card td,
+    .repo-table td,
+    .repo-table th,
+    .feature-table td,
+    .feature-table th,
+    .stack-table td,
+    .stack-table th {
+      border-bottom: 1px solid var(--line);
+      padding: 0.07in 0.04in;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .meta-card tr:last-child td,
+    .repo-table tr:last-child td,
+    .feature-table tr:last-child td,
+    .stack-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.18in;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.12in;
+      margin: 0.12in 0 0.18in;
+    }
+
+    .mini-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.12in;
+      background: var(--panel);
+    }
+
+    .mini-card strong {
+      display: block;
+      color: var(--accent);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9.5pt;
+      margin-bottom: 0.05in;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .flow {
+      border-left: 4px solid var(--accent);
+      padding-left: 0.16in;
+      margin: 0.15in 0;
+    }
+
+    .repo-tree {
+      white-space: pre-wrap;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 8.9pt;
+      line-height: 1.35;
+      background: #fbfbfb;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.16in;
+    }
+
+    .callout {
+      background: #f7fafc;
+    }
+
+    .callout strong {
+      color: var(--accent);
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.08in;
+      margin-top: 0.08in;
+    }
+
+    .pill {
+      border: 1px solid #bdd0df;
+      border-radius: 999px;
+      padding: 0.04in 0.1in;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8.5pt;
+      color: var(--accent);
+      background: #f4f8fb;
+    }
+
+    .subtle {
+      color: var(--muted);
+    }
+
+    .footer {
+      margin-top: auto;
+      padding-top: 0.12in;
+      color: var(--muted);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8.5pt;
+      border-top: 1px solid var(--line);
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="cover">
+      <div class="eyebrow">Thesis Progress Document</div>
+      <h1>PDF Workspace: State of Work Progress</h1>
+      <p class="subtle">
+        A research-oriented PDF reading, indexing, review, and comparison system for turning document exploration into structured learning.
+      </p>
+
+      <div class="cover-grid" style="margin-top:0.22in;">
+        <div>
+          <div class="callout" style="margin-bottom:0.16in;">
+            <strong>Project summary.</strong>
+            <p style="margin-top:0.08in;">
+              This repository implements an interactive research reading environment for PDFs. The system combines document viewing, question-answer chat, source-grounded indexing, spaced review, session-based research organization, and comparative analysis. The design goal is not only to help a reader consume papers, but to convert reading into durable, inspectable learning artifacts that can later support a knowledge graph.
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>Current thesis-facing contribution</h3>
+            <p>
+              The strongest current empirical contribution is the recall-first review pipeline: the reader answers from memory, Claude grades the response against source-grounded evidence, and FSRS scheduling is updated from the graded recall rather than self-rated confidence. This makes the review loop measurable as a learning intervention rather than only a note-taking feature.
+            </p>
+          </div>
+        </div>
+
+        <div class="meta-card">
+          <table>
+            <tr><td><strong>Repository</strong></td><td>`pdf-workspace`</td></tr>
+            <tr><td><strong>Date</strong></td><td>April 23, 2026</td></tr>
+            <tr><td><strong>Primary stack</strong></td><td>React, Vite, Zustand, FastAPI, SQLAlchemy, Postgres, ChromaDB, S3</td></tr>
+            <tr><td><strong>LLM usage</strong></td><td>Claude for chat, grading, ontology work, and comparative analysis</td></tr>
+            <tr><td><strong>Research emphasis</strong></td><td>Learning flow, retrieval practice, readable scientific interfaces, and research comparison</td></tr>
+            <tr><td><strong>Current maturity</strong></td><td>Working end-to-end system with active feature expansion and targeted UX repair</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="mini-grid">
+        <div class="mini-card">
+          <strong>Reader</strong>
+          PDF viewer with TOC, source anchoring, selection actions, and HUD panels.
+        </div>
+        <div class="mini-card">
+          <strong>Index</strong>
+          Saved highlights, synthesis, Q&amp;A cards, concept tags, and review readiness.
+        </div>
+        <div class="mini-card">
+          <strong>Review</strong>
+          Recall-first study session with Claude grading and FSRS scheduling.
+        </div>
+        <div class="mini-card">
+          <strong>Sessions</strong>
+          Research-session grouping layer above PDFs for organizational continuity.
+        </div>
+        <div class="mini-card">
+          <strong>Compare</strong>
+          Session-level comparative analysis driven primarily by AI reading of PDFs.
+        </div>
+        <div class="mini-card">
+          <strong>Testing</strong>
+          Live Playwright checks focused on reading, indexing, review, and analysis flows.
+        </div>
+      </div>
+
+      <div class="footer">Page 1 — Executive overview</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">1. Research Problem and Rationale</div>
+    <h2>Why this system exists</h2>
+    <p>
+      The project addresses a common failure mode in academic reading tools: they are good at storage, search, and annotation, but weak at supporting comprehension, retrieval, and later comparison across papers. In practice, a reader can highlight extensively and still fail to retain what mattered, lose the context of a saved note, or struggle to compare one paper’s claims against another.
+    </p>
+    <p>
+      This repository therefore treats reading as a staged learning pipeline rather than a passive viewing task. A document is uploaded, indexed, explored through chat and highlight actions, converted into study questions, reviewed under a recall-first protocol, and then situated inside a research session where multiple documents can be compared against a shared goal.
+    </p>
+
+    <div class="section-grid">
+      <div class="panel">
+        <h3>Core design rationale</h3>
+        <ul>
+          <li>Reading support should reduce orientation cost without replacing the original paper.</li>
+          <li>Saved questions must remain source-grounded so the user can audit what the system extracted.</li>
+          <li>Review should measure recall quality, not only confidence or recognition.</li>
+          <li>Comparative analysis should rely primarily on the source PDFs and only secondarily on reader-created material.</li>
+          <li>Research organization should follow the user’s inquiry structure, not only a flat PDF library.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Learning-science orientation</h3>
+        <ul>
+          <li><strong>Retrieval practice:</strong> the review loop asks for typed recall before revealing grading or source text.</li>
+          <li><strong>Scaffolding:</strong> chat, synthesis, term support, and session grouping reduce reader disorientation.</li>
+          <li><strong>Progressive disclosure:</strong> users can move from gist, to source, to deeper comparison.</li>
+          <li><strong>Traceability:</strong> study artifacts remain linked to passage, page, and paper context.</li>
+          <li><strong>Comparative reasoning:</strong> papers are eventually analyzed not as isolated texts but as competing or complementary interventions.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flow">
+      <p><strong>Practical thesis framing.</strong> The app is not just a PDF reader with AI attached. Its thesis-relevant claim is that an interface can structure reading so that document interaction produces measurable learning signals, reusable study artifacts, and comparative research understanding.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Why the current work matters</h3>
+      <p>
+        The repository has already moved beyond a prototype that merely answers questions about a PDF. It now includes data models and workflows for storing knowledge artifacts, capturing review telemetry, organizing papers by research session, and generating session-level comparison outputs. This makes it suitable as a research platform rather than only a convenience layer over document chat.
+      </p>
+    </div>
+
+    <div class="footer">Page 2 — Problem statement and rationale</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">2. End-to-End Learning Flow</div>
+    <h2>How a reader moves through the system</h2>
+    <p>
+      The application is designed around a reader journey that begins with document ingestion and ends with study and comparison. This sequence is important because the project’s architecture follows the learning flow closely.
+    </p>
+
+    <div class="panel" style="margin-bottom:0.16in;">
+      <h3>Primary workflow</h3>
+      <p>
+        <strong>Upload PDF → read in viewer → select passage or ask chat question → log useful material to index → review saved Q&amp;A cards → organize PDFs into research sessions → compare papers inside a session.</strong>
+      </p>
+    </div>
+
+    <div class="section-grid">
+      <div class="panel">
+        <h3>Reader mode</h3>
+        <ul>
+          <li>PDF is displayed with page navigation and table-of-contents support.</li>
+          <li>User can select text and invoke actions such as explain, simplify, key terms, summarise, and quiz.</li>
+          <li>Selected passages are anchored to page and chunk metadata when possible.</li>
+          <li>HUD tabs provide access to Chat, Index, and Compare while reading.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Chat and capture</h3>
+        <ul>
+          <li>Chat answers are grounded in document excerpts when relevant.</li>
+          <li>Short questions without selection can use a quick response mode.</li>
+          <li>Useful responses can be logged to the index as study cards.</li>
+          <li>Partial highlights are extended toward sentence boundaries to improve later readability.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section-grid">
+      <div class="panel">
+        <h3>Indexing and synthesis</h3>
+        <ul>
+          <li>Saved entries store highlight text, section metadata, concepts, notes, synthesis, and nested Q&amp;A cards.</li>
+          <li>The index acts as a knowledge staging area between reading and review.</li>
+          <li>Entries can be starred, flagged, anchored, reviewed, or merged.</li>
+          <li>Deduplication protects the queue from near-duplicate study questions.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Review and retention</h3>
+        <ul>
+          <li>Due cards are pulled from `qa_pairs` with FSRS state stored inline.</li>
+          <li>Review begins with memory recall before grading feedback is shown.</li>
+          <li>Claude grades recall on core claim, supporting detail, and faithfulness.</li>
+          <li>Review logs preserve confidence, latency, reveal usage, grading output, and scheduler transitions.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Current learning-flow strength.</strong>
+      <p style="margin-top:0.08in;">
+        The system already supports a meaningful loop from reading to retrieval practice. The main active UX issue is contextual integrity: some saved questions become too detached from their source context in the Index and Review flows. That is now an identified next-phase design target rather than an unknown problem.
+      </p>
+    </div>
+
+    <div class="footer">Page 3 — Reader journey and learning flow</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">3. Current Feature Set</div>
+    <h2>Implemented capabilities in the application</h2>
+
+    <table class="feature-table">
+      <tr>
+        <th style="width:28%;">Feature area</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><strong>PDF ingestion</strong></td>
+        <td>Upload PDFs, extract pages, chunk text, embed with MiniLM, store chunks in ChromaDB, and persist metadata in Postgres with S3-backed file storage.</td>
+      </tr>
+      <tr>
+        <td><strong>Table of contents</strong></td>
+        <td>Derive TOC from native outline when available, or fall back to font-size heuristics with debug support.</td>
+      </tr>
+      <tr>
+        <td><strong>Selection actions</strong></td>
+        <td>Explain, simplify, summarise, key terms, quiz, and chat-derived logging from passages or chat responses.</td>
+      </tr>
+      <tr>
+        <td><strong>Chat assistant</strong></td>
+        <td>Document-grounded assistant with layered response templates, quick mode for short questions, clickable page citations, and optional voice transcription.</td>
+      </tr>
+      <tr>
+        <td><strong>Highlight index</strong></td>
+        <td>Per-PDF index of saved passages, synthesis, notes, concepts, cluster tags, and study cards.</td>
+      </tr>
+      <tr>
+        <td><strong>Deduplication</strong></td>
+        <td>Near-duplicate study question detection with modal choices: open existing, merge answer, force save, or dismiss.</td>
+      </tr>
+      <tr>
+        <td><strong>Review pipeline</strong></td>
+        <td>Recall-first review overlay, confidence capture, source reveal telemetry, Claude grading, and FSRS scheduling.</td>
+      </tr>
+      <tr>
+        <td><strong>Research sessions</strong></td>
+        <td>Session-first left sidebar replacing a flat PDF library, with editable topic/context and manual PDF assignment.</td>
+      </tr>
+      <tr>
+        <td><strong>Workspace tabs</strong></td>
+        <td>Top-level page modes for Reader, Index, Compare, and Review, while keeping the HUD-style side panel in reader mode.</td>
+      </tr>
+      <tr>
+        <td><strong>Comparative analysis</strong></td>
+        <td>Session-level paper comparison driven mainly by AI analysis of PDF excerpts, with index/review material used as secondary anchors.</td>
+      </tr>
+      <tr>
+        <td><strong>Testing</strong></td>
+        <td>Playwright-based regression and exploratory scripts across upload, index, review, session organization, and compare flows.</td>
+      </tr>
+    </table>
+
+    <div class="section-grid" style="margin-top:0.16in;">
+      <div class="panel">
+        <h3>Index-related capabilities</h3>
+        <ul>
+          <li>Nested highlight entries with multiple Q&amp;A pairs.</li>
+          <li>On-demand synthesis and deeper synthesis storage fields.</li>
+          <li>Concept extraction and topic tags.</li>
+          <li>Star, flag, anchor, and review markers.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Session and compare capabilities</h3>
+        <ul>
+          <li>Default sessions such as Learning Design Research and Medical Encyclopedia.</li>
+          <li>Unsorted Research as an explicit inbox for new uploads.</li>
+          <li>Suggestion flows for session naming and placement.</li>
+          <li>AI literature-review matrix, custom axes, insight cards, gaps, and reader guidance.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">Page 4 — Implemented features</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">4. Comparative Analysis and Research Session Layer</div>
+    <h2>How the app is evolving from single-paper reading to multi-paper research</h2>
+    <p>
+      A major recent architectural shift is the introduction of <strong>research sessions</strong> as a grouping layer above individual PDFs. This change matters because comparison, learning-graph construction, and session-level takeaways cannot be grounded in a flat library alone.
+    </p>
+
+    <div class="section-grid">
+      <div class="panel">
+        <h3>Research session model</h3>
+        <ul>
+          <li>A `ResearchSession` stores a title, topic, context, ontology payload, and learning-takeaway payload.</li>
+          <li>A many-to-many `ResearchSessionPDF` membership table supports future multi-session membership for one PDF.</li>
+          <li>The legacy `pdf_documents.research_session_id` remains for compatibility and current primary-session behavior.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Why sessions matter for learning</h3>
+        <ul>
+          <li>They frame reading around a research goal rather than a file list.</li>
+          <li>They support later comparative tables and gap analysis.</li>
+          <li>They separate unrelated corpora, such as learning-interface papers and medical reference texts.</li>
+          <li>They create a future bridge toward session-level knowledge graphs.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:0.16in;">
+      <h3>Comparative analysis pipeline</h3>
+      <p>
+        The compare layer is implemented as a session-level service that samples PDF chunks directly from ChromaDB, generates per-paper analyses with Claude, synthesizes a comparison matrix, and caches the result on the research session. Reader-created index entries and Q&amp;A cards are used as secondary anchors to show what the reader has already noticed, but the source PDFs remain primary evidence.
+      </p>
+      <div class="pill-row">
+        <span class="pill">Fixed scholarly dimensions</span>
+        <span class="pill">Session-specific axes</span>
+        <span class="pill">Cross-paper insight cards</span>
+        <span class="pill">Research gaps</span>
+        <span class="pill">Reader decision guide</span>
+      </div>
+    </div>
+
+    <div class="section-grid" style="margin-top:0.16in;">
+      <div class="callout">
+        <strong>Current status.</strong>
+        <p style="margin-top:0.08in;">
+          The compare workspace now produces stronger custom axes and paper-to-paper contrasts than its first pass. It also includes reader-guidance cards that explain what each paper is best for, how it differs, and what to pair it with.
+        </p>
+      </div>
+
+      <div class="callout">
+        <strong>Current limitation.</strong>
+        <p style="margin-top:0.08in;">
+          The full value of comparison still depends on stronger organization in the Index and Review layers. If saved questions lose context, downstream comparison and future knowledge-graph work become noisier.
+        </p>
+      </div>
+    </div>
+
+    <p style="margin-top:0.16in;">
+      This session-first direction is important for the thesis because it repositions the system from “AI reader for one document” toward “research environment for accumulating, reviewing, and contrasting structured understanding across documents.”
+    </p>
+
+    <div class="footer">Page 5 — Sessions and comparative analysis</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">5. Architecture and Data Model</div>
+    <h2>How the system is built</h2>
+
+    <table class="stack-table">
+      <tr><th style="width:26%;">Layer</th><th>Current implementation</th></tr>
+      <tr><td><strong>Frontend</strong></td><td>React + Vite application with Zustand state store and dedicated workspace components for Reader, Index, Compare, and Review.</td></tr>
+      <tr><td><strong>Backend API</strong></td><td>FastAPI application with routers for PDFs, chat, highlights, review, research export, research sessions, and voice transcription.</td></tr>
+      <tr><td><strong>Database</strong></td><td>Postgres via SQLAlchemy ORM. Key entities include `pdf_documents`, `highlight_entries`, `qa_pairs`, `review_log`, `research_sessions`, and `research_session_pdfs`.</td></tr>
+      <tr><td><strong>Vector retrieval</strong></td><td>ChromaDB stores chunk embeddings and supports passage retrieval, chunk resolution, and PDF-first comparative analysis.</td></tr>
+      <tr><td><strong>File storage</strong></td><td>S3 stores uploaded PDFs, while the backend streams files and presigned URLs to the frontend.</td></tr>
+      <tr><td><strong>Embeddings</strong></td><td>SentenceTransformers `all-MiniLM-L6-v2` for chunk embeddings and deduplication similarity.</td></tr>
+      <tr><td><strong>LLM functions</strong></td><td>Claude models power chat generation, grading, ontology/facet work, study question preparation, and comparative analysis.</td></tr>
+      <tr><td><strong>Testing</strong></td><td>Playwright-based live and regression scripts plus migration/backfill verification utilities.</td></tr>
+    </table>
+
+    <div class="section-grid" style="margin-top:0.16in;">
+      <div class="panel">
+        <h3>Key backend entities</h3>
+        <ul>
+          <li><strong>PDFDocument:</strong> title, S3 key, page count, chunk count, ontology, session pointer.</li>
+          <li><strong>HighlightEntry:</strong> passage, section data, concepts, synthesis, cluster tag, status flags.</li>
+          <li><strong>QAPair:</strong> question, study question, answer, source chunks, card type, FSRS fields, tags, provenance.</li>
+          <li><strong>ReviewLog:</strong> confidence, recall text, reveal telemetry, Claude grades, FSRS transition, versioning.</li>
+          <li><strong>ResearchSession:</strong> session topic, context, ontology, takeaways, and PDF memberships.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Architectural pattern</h3>
+        <ul>
+          <li>The frontend store hydrates highlights and chat per selected PDF.</li>
+          <li>The backend owns canonical study-question generation and dedup decisions.</li>
+          <li>Review state lives inline on `qa_pairs` rather than in a separate memory-item table.</li>
+          <li>Comparative analysis is cached on sessions to avoid recomputing every view.</li>
+          <li>Schema evolution uses both Alembic and defensive boot-time `ALTER TABLE IF NOT EXISTS` statements.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flow">
+      <p><strong>Implementation philosophy.</strong> The current codebase consistently favors traceability and compatibility: preserve stored artifacts, add features incrementally, and keep routes and models stable enough that new organizational layers do not erase prior work.</p>
+    </div>
+
+    <div class="footer">Page 6 — Architecture and data model</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">6. Repository Structure</div>
+    <h2>Repo map and implementation organization</h2>
+
+    <div class="repo-tree">pdf-workspace/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── models/
+│   │   │   ├── pdf.py
+│   │   │   ├── highlight.py
+│   │   │   ├── review.py
+│   │   │   └── research_session.py
+│   │   ├── routers/
+│   │   │   ├── pdfs.py
+│   │   │   ├── chat.py
+│   │   │   ├── highlights.py
+│   │   │   ├── review.py
+│   │   │   ├── research.py
+│   │   │   ├── research_sessions.py
+│   │   │   └── voice.py
+│   │   └── services/
+│   │       ├── pdf_service.py
+│   │       ├── toc_service.py
+│   │       ├── s3_service.py
+│   │       ├── chroma_service.py
+│   │       ├── embedding_service.py
+│   │       ├── chat_service.py
+│   │       ├── card_service.py
+│   │       ├── grading_service.py
+│   │       ├── ontology_service.py
+│   │       ├── research_session_service.py
+│   │       └── comparative_analysis_service.py
+│   ├── migrations/
+│   ├── scripts/
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── store/index.js
+│   │   ├── api/
+│   │   └── components/
+│   │       ├── PDFSidebar.jsx
+│   │       ├── PDFViewer.jsx
+│   │       ├── ChatPanel.jsx
+│   │       ├── HighlightIndex.jsx
+│   │       ├── ReviewSession.jsx
+│   │       ├── WorkspaceIndex.jsx
+│   │       ├── WorkspaceReview.jsx
+│   │       └── WorkspaceCompare.jsx
+├── playwright-tests/
+├── docs/
+├── chroma_data/
+├── logs/
+└── research/</div>
+
+    <div class="section-grid" style="margin-top:0.16in;">
+      <div class="panel">
+        <h3>What lives where</h3>
+        <ul>
+          <li><strong>`backend/app/routers`</strong> defines the external API surface.</li>
+          <li><strong>`backend/app/services`</strong> contains domain logic: ingestion, chat, grading, ontology, sessions, comparison.</li>
+          <li><strong>`frontend/src/components`</strong> implements the reader HUD and full-page workspaces.</li>
+          <li><strong>`frontend/src/store`</strong> coordinates selected PDF, sessions, chat history, highlight index, and review mode.</li>
+          <li><strong>`playwright-tests`</strong> captures live behavior and regression-sensitive learning flows.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Why this structure is useful for a thesis project</h3>
+        <ul>
+          <li>Research logic is visible in service boundaries instead of being scattered through the UI.</li>
+          <li>Testing artifacts are retained in the repository as methodological trace, not only CI scaffolding.</li>
+          <li>The repo cleanly separates data model, interface shell, and AI-assisted analysis layers.</li>
+          <li>The documentable units of work map well onto thesis chapters: interface, storage, retrieval, review, comparison.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">Page 7 — Repository structure</div>
+  </section>
+
+  <section class="page">
+    <div class="eyebrow">7. Key Updates, Current Limitations, and Next Steps</div>
+    <h2>State of work progress</h2>
+
+    <div class="section-grid">
+      <div class="panel">
+        <h3>Key shipped updates</h3>
+        <ul>
+          <li><strong>Step 1:</strong> canonical server-owned study-question schema and card-type contract.</li>
+          <li><strong>Step 2:</strong> dedup gate, soft deletion, merge flow, and write-time quality floor for study cards.</li>
+          <li><strong>Step 3:</strong> recall-first review UI with reveal telemetry and thesis-grade review logging.</li>
+          <li><strong>Session-first sidebar:</strong> transition from flat PDF library to research sessions.</li>
+          <li><strong>Workspace tabs:</strong> Reader, Index, Compare, and Review now have full-page modes.</li>
+          <li><strong>Comparative analysis:</strong> AI comparison cache now includes stronger custom axes, cross-paper insights, research gaps, and reader guidance.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Most important current limitation</h3>
+        <p>
+          The app now produces many useful study artifacts, but some saved questions still lose too much context once they leave the original chat or highlight moment. This creates friction in the Index and Review flows and weakens later organization for comparison and knowledge-graph work.
+        </p>
+        <p>
+          In short: the system is strong at producing learning material, but still needs better context preservation and organization for that material.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:0.16in;">
+      <h3>Current UX repair plan</h3>
+      <ul>
+        <li>Normalize question context so every saved question carries provenance, scope, and a usable summary.</li>
+        <li>Repair the right-side Index and Review flows so ambiguous questions remain answerable and traceable.</li>
+        <li>Turn full-page Index and Review tabs into real deep-dive workspaces instead of enlarged side panels.</li>
+        <li>Backfill weak legacy questions rather than silently deleting or rewriting them.</li>
+      </ul>
+    </div>
+
+    <div class="section-grid" style="margin-top:0.16in;">
+      <div class="callout">
+        <strong>Near-term research value.</strong>
+        <p style="margin-top:0.08in;">
+          Even in its current state, the system already demonstrates a coherent pipeline from document reading to measurable review and session-level comparison. This is a credible state-of-work progress point for a thesis because the architecture now supports both user-facing interaction and research logging.
+        </p>
+      </div>
+
+      <div class="callout">
+        <strong>Next phase.</strong>
+        <p style="margin-top:0.08in;">
+          The next phase is not adding another isolated feature. It is improving contextual integrity across Index, Review, and Session analysis so that all later work, especially comparative synthesis and eventual knowledge graphs, sits on better-organized learning artifacts.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:0.16in;">
+      <h3>Conclusion</h3>
+      <p>
+        The repository has evolved from an AI-assisted PDF viewer into a structured research reading environment. Its strongest present contribution is the integration of source-grounded reading support, recall-first review, and session-level comparison inside one coherent workspace. The system is operational, testable, and already suitable for methodological discussion as a thesis progress artifact, while clearly exposing the next design problem: preserving context and improving the organization of learned material.
+      </p>
+    </div>
+
+    <div class="footer">Page 8 — Current state and next steps</div>
+  </section>
+</body>
+</html>
